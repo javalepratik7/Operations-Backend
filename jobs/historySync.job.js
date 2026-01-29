@@ -23,7 +23,7 @@ const { writeBlinkitMarketplaceData } = require('../services/Writeoperationsblin
 
 function startHistorySyncJob() {
   cron.schedule(
-    '0 14 * * *', // every 15 minutes
+    '0 14 * * *', // every Time run on 2 pm
     async () => {
       console.log('🕒 History sync job started at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
 

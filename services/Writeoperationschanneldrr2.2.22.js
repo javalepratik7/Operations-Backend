@@ -22,13 +22,13 @@ async function writeOperationsChannelDRR(channelData) {
 
     // Map operations_db fields → sku_inventory_report columns
     const allocated_on_hold = allocated_on_hold_increff_units;
-    const increff_units_value = increff_units;
+    const increff_day_cover_value = increff_units;
     const fba_drr = amazon_drr;
     const fbf_drr = flipkart_drr;
     const myntra_drr_value = myntra_drr;
 
     console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(`   Data: allocated_on_hold=${allocated_on_hold}, increff_units=${increff_units_value}`);
+    console.log(`   Data: allocated_on_hold=${allocated_on_hold}, increff_day_cover=${increff_day_cover_value}`);
     console.log(`   DRR: fba=${fba_drr}, fbf=${fbf_drr}, myntra=${myntra_drr_value}`);
 
     try {
@@ -36,12 +36,12 @@ async function writeOperationsChannelDRR(channelData) {
       const [updateResult] = await historyDb.query(
         `UPDATE sku_inventory_report
          SET allocated_on_hold = ?,
-             increff_units = ?,
+             increff_day_cover = ?,
              fba_drr = ?,
              fbf_drr = ?,
              myntra_drr = ?
          WHERE ean_code = ? AND created_at >= NOW() - INTERVAL 12 HOUR`,
-        [allocated_on_hold, increff_units_value, fba_drr, fbf_drr, myntra_drr_value, ean]
+        [allocated_on_hold, increff_day_cover_value, fba_drr, fbf_drr, myntra_drr_value, ean]
       );
 
       console.log(`   ✓ Update affected rows: ${updateResult.affectedRows}`);
@@ -255,10 +255,10 @@ async function writeOperationsChannelDRR(channelData) {
 
           kv_allocated_on_hold,
 
-          ?,
+          increff_units,
           website_drr,
           ?,
-          increff_day_cover,
+          ?,
 
           kvt_units,
           drr,
@@ -383,7 +383,7 @@ async function writeOperationsChannelDRR(channelData) {
         WHERE ean_code = ?
         ORDER BY created_at DESC
         LIMIT 1`,
-        [increff_units_value, allocated_on_hold, fba_drr, fbf_drr, myntra_drr_value, ean]
+        [allocated_on_hold, increff_day_cover_value, fba_drr, fbf_drr, myntra_drr_value, ean]
       );
 
       console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
