@@ -1,8 +1,8 @@
 const historyDb = require('../db/historyDb');
 
-async function writeHistoryOperationZepto(zeptoData) {
-  if (!zeptoData || zeptoData.length === 0) {
-    console.log('ℹ️ No Zepto data to write');
+async function writeOperationsInventoryDetails(inventoryData) {
+  if (!inventoryData || inventoryData.length === 0) {
+    console.log('ℹ️ No Inventory Details data to write');
     return;
   }
 
@@ -10,29 +10,64 @@ async function writeHistoryOperationZepto(zeptoData) {
   let insertCount = 0;
   let skipCount = 0;
 
-  for (const row of zeptoData) {
+  for (const row of inventoryData) {
     const {
-      ean,           // From Zepto data
-      drr_30d,
-      drr_14d,
-      drr_7d,
+      ean,
+      increff_units,
+      pc_units,
+      allocated_on_hold_increff_units,
+      fba_units_gb,
+      bundled_fba_units_gb,
+      fbf_units_gb,
+      bundled_fbf_units_gb,
+      myntra_units_gb,
+      bundled_myntra_units_gb,
     } = row;
 
-    // Map Zepto DRR fields → sku_inventory_report columns
-    const Zepto_drr_7d   = drr_7d;
-    const Zepto_drr_15d  = drr_14d;
-    const Zepto_drr_30d  = drr_30d;
+    // Map operations_db fields → sku_inventory_report columns
+    const increff_units_value = increff_units;
+    const pc_units_value = pc_units;
+    const allocated_on_hold_pc_units = allocated_on_hold_increff_units;
+    const fba_units_gb_value = fba_units_gb;
+    const fba_bundled_units = bundled_fba_units_gb;
+    const fbf_units_gb_value = fbf_units_gb;
+    const fbf_bundled_units = bundled_fbf_units_gb;
+    const myntra_units_gb_value = myntra_units_gb;
+    const myntra_bundled_units = bundled_myntra_units_gb;
 
     console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(`   Data: 7d=${Zepto_drr_7d}, 15d=${Zepto_drr_15d}, 30d=${Zepto_drr_30d}`);
+    console.log(`   Increff: units=${increff_units_value}, allocated=${allocated_on_hold_pc_units}`);
+    console.log(`   PC: units=${pc_units_value}`);
+    console.log(`   FBA: units=${fba_units_gb_value}, bundled=${fba_bundled_units}`);
+    console.log(`   FBF: units=${fbf_units_gb_value}, bundled=${fbf_bundled_units}`);
+    console.log(`   Myntra: units=${myntra_units_gb_value}, bundled=${myntra_bundled_units}`);
 
     try {
       // 1️⃣ Try UPDATE the last 12 hours
       const [updateResult] = await historyDb.query(
         `UPDATE sku_inventory_report
-         SET Zepto_B2B_drr_7d = ?, Zepto_B2B_drr_15d = ?, Zepto_B2B_drr_30d = ?
+         SET increff_units = ?,
+             pc_units = ?,
+             allocated_on_hold_pc_units = ?,
+             fba_units_gb = ?,
+             fba_bundled_units = ?,
+             fbf_units_gb = ?,
+             fbf_bundled_units = ?,
+             myntra_units_gb = ?,
+             myntra_bundled_units = ?
          WHERE ean_code = ? AND created_at >= NOW() - INTERVAL 12 HOUR`,
-        [Zepto_drr_7d, Zepto_drr_15d, Zepto_drr_30d, ean]
+        [
+          increff_units_value,
+          pc_units_value,
+          allocated_on_hold_pc_units,
+          fba_units_gb_value,
+          fba_bundled_units,
+          fbf_units_gb_value,
+          fbf_bundled_units,
+          myntra_units_gb_value,
+          myntra_bundled_units,
+          ean
+        ]
       );
 
       console.log(`   ✓ Update affected rows: ${updateResult.affectedRows}`);
@@ -204,15 +239,16 @@ async function writeHistoryOperationZepto(zeptoData) {
           Zepto_B2B_drr_7d,
           Zepto_B2B_drr_15d,
           Zepto_B2B_drr_30d,
-          created_at,
+
           swiggy_state,
           swiggy_city,
           swiggy_area_name,
           swiggy_store_id,
           swiggy_drr_7d,
           swiggy_drr_14d,
-          swiggy_drr_30d
+          swiggy_drr_30d,
 
+          created_at
         )
         SELECT
           brand,
@@ -245,7 +281,7 @@ async function writeHistoryOperationZepto(zeptoData) {
 
           kv_allocated_on_hold,
 
-          increff_units,
+          ?,
           website_drr,
           allocated_on_hold,
           increff_day_cover,
@@ -254,19 +290,19 @@ async function writeHistoryOperationZepto(zeptoData) {
           drr,
           kvt_day_cover,
 
-          pc_units,
-          allocated_on_hold_pc_units,
+          ?,
+          ?,
 
-          fba_units_gb,
-          fba_bundled_units,
+          ?,
+          ?,
           fba_drr,
 
-          fbf_units_gb,
-          fbf_bundled_units,
+          ?,
+          ?,
           fbf_drr,
 
-          myntra_units_gb,
-          myntra_bundled_units,
+          ?,
+          ?,
           myntra_drr,
 
           rk_world_stock,
@@ -355,21 +391,36 @@ async function writeHistoryOperationZepto(zeptoData) {
           total_speed,
           total_day_cover,
           total_cogs,
+
+          Zepto_B2B_drr_7d,
+          Zepto_B2B_drr_15d,
+          Zepto_B2B_drr_30d,
+
           swiggy_state,
           swiggy_city,
           swiggy_area_name,
           swiggy_store_id,
           swiggy_drr_7d,
           swiggy_drr_14d,
-          swiggy_drr_30d
+          swiggy_drr_30d,
 
-
-          ?, ?, ?, NOW()
+          NOW()
         FROM sku_inventory_report
         WHERE ean_code = ?
         ORDER BY created_at DESC
         LIMIT 1`,
-        [Zepto_drr_7d, Zepto_drr_15d, Zepto_drr_30d, ean]
+        [
+          increff_units_value,
+          pc_units_value,
+          allocated_on_hold_pc_units,
+          fba_units_gb_value,
+          fba_bundled_units,
+          fbf_units_gb_value,
+          fbf_bundled_units,
+          myntra_units_gb_value,
+          myntra_bundled_units,
+          ean
+        ]
       );
 
       console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
@@ -385,13 +436,13 @@ async function writeHistoryOperationZepto(zeptoData) {
     }
   }
 
-  console.log(`\n✅ Zepto history sync completed:`);
-  console.log(`   📊 Total rows processed: ${zeptoData.length}`);
+  console.log(`\n✅ Inventory Details sync completed:`);
+  console.log(`   📊 Total rows processed: ${inventoryData.length}`);
   console.log(`   🔄 Updated: ${updateCount}`);
   console.log(`   ➕ Inserted: ${insertCount}`);
   console.log(`   ⏭️  Skipped: ${skipCount}`);
 }
 
 module.exports = {
-  writeHistoryOperationZepto,
+  writeOperationsInventoryDetails,
 };

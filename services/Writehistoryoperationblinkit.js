@@ -94,7 +94,7 @@ async function writeHistoryOperationBlinkit(blinkitData) {
 
           increff_units,
           website_drr,
-          Allocated_On_Hold_increff_Units,
+          allocated_on_hold,
           increff_day_cover,
 
           kvt_units,
@@ -105,15 +105,15 @@ async function writeHistoryOperationBlinkit(blinkitData) {
           allocated_on_hold_pc_units,
 
           fba_units_gb,
-          bundled_fba_units_gb,
+          fba_bundled_units,
           fba_drr,
 
           fbf_units_gb,
-          bundled_fbf_units_gb,
+          fbf_bundled_units,
           fbf_drr,
 
           myntra_units_gb,
-          bundled_myntra_units_gb,
+          myntra_bundled_units,
           myntra_drr,
 
           rk_world_stock,
@@ -241,7 +241,7 @@ async function writeHistoryOperationBlinkit(blinkitData) {
 
           increff_units,
           website_drr,
-          Allocated_On_Hold_increff_Units,
+          allocated_on_hold,
           increff_day_cover,
 
           kvt_units,
@@ -252,15 +252,15 @@ async function writeHistoryOperationBlinkit(blinkitData) {
           allocated_on_hold_pc_units,
 
           fba_units_gb,
-          bundled_fba_units_gb,
+          fba_bundled_units,
           fba_drr,
 
           fbf_units_gb,
-          bundled_fbf_units_gb,
+          fbf_bundled_units,
           fbf_drr,
 
           myntra_units_gb,
-          bundled_myntra_units_gb,
+          myntra_bundled_units,
           myntra_drr,
 
           rk_world_stock,

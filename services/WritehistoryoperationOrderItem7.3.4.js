@@ -1,38 +1,136 @@
 const historyDb = require('../db/historyDb');
 
-async function writeHistoryOperationZepto(zeptoData) {
-  if (!zeptoData || zeptoData.length === 0) {
-    console.log('ℹ️ No Zepto data to write');
+
+async function writeB2BOrderData(b2bOrderData) {
+  if (!b2bOrderData || b2bOrderData.length === 0) {
+    console.log('ℹ️ No B2B Order data to write');
     return;
   }
 
+  // 📊 Step 1: Aggregate data by EAN
+  const eanMap = new Map();
+
+  for (const row of b2bOrderData) {
+    const {
+      ean,
+      supplier_name,
+      supplier_wh_vendor,
+      buyer_name,
+      buyer_wh_vendor,
+      order_quantity,
+    } = row;
+
+    if (!ean) continue;
+
+    // Initialize EAN entry if not exists
+    if (!eanMap.has(ean)) {
+      eanMap.set(ean, {
+        vendor_increff: 0,
+        vendor_to_pc: 0,
+        vendor_to_fba: 0,
+        vendor_to_fbf: 0,
+        vendor_to_kv: 0,
+        pc_to_increff: 0,
+        pc_to_fba: 0,
+        pc_to_fbf: 0,
+        kv_to_fba: 0,
+        kv_to_fbf: 0,
+      });
+    }
+
+    const eanData = eanMap.get(ean);
+    const qty = parseFloat(order_quantity) || 0;
+
+    // 1️⃣ Vendor - Increff
+    if (buyer_name === 'merhaki' && buyer_wh_vendor === 'assure') {
+      eanData.vendor_increff += qty;
+    }
+
+    // 2️⃣ Vendor to PC
+    if (buyer_name === 'merhaki' && ['hive', 'firstcry'].includes(buyer_wh_vendor)) {
+      eanData.vendor_to_pc += qty;
+    }
+
+    // 3️⃣ Vendor to FBA
+    if (buyer_name === 'merhaki' && buyer_wh_vendor === 'amazon') {
+      eanData.vendor_to_fba += qty;
+    }
+
+    // 4️⃣ Vendor to FBF
+    if (buyer_name === 'merhaki' && buyer_wh_vendor === 'flipkart') {
+      eanData.vendor_to_fbf += qty;
+    }
+
+    // 5️⃣ Vendor to KV
+    if (buyer_name === 'merhaki' && buyer_wh_vendor === 'brand') {
+      eanData.vendor_to_kv += qty;
+    }
+
+    // 6️⃣ PC to Increff
+    if (['firstcry', 'hive'].includes(supplier_wh_vendor) && buyer_wh_vendor === 'assure') {
+      eanData.pc_to_increff += qty;
+    }
+
+    // 7️⃣ PC to FBA
+    if (['firstcry', 'hive'].includes(supplier_wh_vendor) && buyer_wh_vendor === 'amazon') {
+      eanData.pc_to_fba += qty;
+    }
+
+    // 8️⃣ PC to FBF
+    if (['firstcry', 'hive'].includes(supplier_wh_vendor) && buyer_wh_vendor === 'flipkart') {
+      eanData.pc_to_fbf += qty;
+    }
+
+    // 9️⃣ KV to FBA
+    if (supplier_wh_vendor === 'brand' && buyer_wh_vendor === 'amazon') {
+      eanData.kv_to_fba += qty;
+    }
+
+    // 🔟 KV to FBF
+    if (supplier_wh_vendor === 'brand' && buyer_wh_vendor === 'flipkart') {
+      eanData.kv_to_fbf += qty;
+    }
+  }
+
+  // 📝 Step 2: Process each EAN
   let updateCount = 0;
   let insertCount = 0;
   let skipCount = 0;
 
-  for (const row of zeptoData) {
-    const {
-      ean,           // From Zepto data
-      drr_30d,
-      drr_14d,
-      drr_7d,
-    } = row;
-
-    // Map Zepto DRR fields → sku_inventory_report columns
-    const Zepto_drr_7d   = drr_7d;
-    const Zepto_drr_15d  = drr_14d;
-    const Zepto_drr_30d  = drr_30d;
-
+  for (const [ean, data] of eanMap.entries()) {
     console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(`   Data: 7d=${Zepto_drr_7d}, 15d=${Zepto_drr_15d}, 30d=${Zepto_drr_30d}`);
+    console.log(`   Vendor Flow: increff=${data.vendor_increff}, pc=${data.vendor_to_pc}, fba=${data.vendor_to_fba}, fbf=${data.vendor_to_fbf}, kv=${data.vendor_to_kv}`);
+    console.log(`   PC Flow: increff=${data.pc_to_increff}, fba=${data.pc_to_fba}, fbf=${data.pc_to_fbf}`);
+    console.log(`   KV Flow: fba=${data.kv_to_fba}, fbf=${data.kv_to_fbf}`);
 
     try {
       // 1️⃣ Try UPDATE the last 12 hours
       const [updateResult] = await historyDb.query(
         `UPDATE sku_inventory_report
-         SET Zepto_B2B_drr_7d = ?, Zepto_B2B_drr_15d = ?, Zepto_B2B_drr_30d = ?
+         SET vendor_increff = ?,
+             vendor_to_pc = ?,
+             vendor_to_fba = ?,
+             vendor_to_fbf = ?,
+             vendor_to_kv = ?,
+             pc_to_increff = ?,
+             pc_to_fba = ?,
+             pc_to_fbf = ?,
+             kv_to_fba = ?,
+             kv_to_fbf = ?
          WHERE ean_code = ? AND created_at >= NOW() - INTERVAL 12 HOUR`,
-        [Zepto_drr_7d, Zepto_drr_15d, Zepto_drr_30d, ean]
+        [
+          data.vendor_increff,
+          data.vendor_to_pc,
+          data.vendor_to_fba,
+          data.vendor_to_fbf,
+          data.vendor_to_kv,
+          data.pc_to_increff,
+          data.pc_to_fba,
+          data.pc_to_fbf,
+          data.kv_to_fba,
+          data.kv_to_fbf,
+          ean
+        ]
       );
 
       console.log(`   ✓ Update affected rows: ${updateResult.affectedRows}`);
@@ -204,15 +302,16 @@ async function writeHistoryOperationZepto(zeptoData) {
           Zepto_B2B_drr_7d,
           Zepto_B2B_drr_15d,
           Zepto_B2B_drr_30d,
-          created_at,
+
           swiggy_state,
           swiggy_city,
           swiggy_area_name,
           swiggy_store_id,
           swiggy_drr_7d,
           swiggy_drr_14d,
-          swiggy_drr_30d
+          swiggy_drr_30d,
 
+          created_at
         )
         SELECT
           brand,
@@ -231,17 +330,17 @@ async function writeHistoryOperationZepto(zeptoData) {
           launch_date,
           is_bundle,
 
-          vendor_increff,
-          vendor_to_pc,
-          vendor_to_fba,
-          vendor_to_fbf,
-          vendor_to_kv,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
 
-          pc_to_increff,
-          pc_to_fba,
-          pc_to_fbf,
-          kv_to_fba,
-          kv_to_fbf,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
 
           kv_allocated_on_hold,
 
@@ -355,21 +454,37 @@ async function writeHistoryOperationZepto(zeptoData) {
           total_speed,
           total_day_cover,
           total_cogs,
+
+          Zepto_B2B_drr_7d,
+          Zepto_B2B_drr_15d,
+          Zepto_B2B_drr_30d,
+
           swiggy_state,
           swiggy_city,
           swiggy_area_name,
           swiggy_store_id,
           swiggy_drr_7d,
           swiggy_drr_14d,
-          swiggy_drr_30d
+          swiggy_drr_30d,
 
-
-          ?, ?, ?, NOW()
+          NOW()
         FROM sku_inventory_report
         WHERE ean_code = ?
         ORDER BY created_at DESC
         LIMIT 1`,
-        [Zepto_drr_7d, Zepto_drr_15d, Zepto_drr_30d, ean]
+        [
+          data.vendor_increff,
+          data.vendor_to_pc,
+          data.vendor_to_fba,
+          data.vendor_to_fbf,
+          data.vendor_to_kv,
+          data.pc_to_increff,
+          data.pc_to_fba,
+          data.pc_to_fbf,
+          data.kv_to_fba,
+          data.kv_to_fbf,
+          ean
+        ]
       );
 
       console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
@@ -380,18 +495,17 @@ async function writeHistoryOperationZepto(zeptoData) {
 
     } catch (error) {
       console.error(`   ❌ Error processing EAN ${ean}:`, error.message);
-      // Continue with next row instead of stopping the entire process
       continue;
     }
   }
 
-  console.log(`\n✅ Zepto history sync completed:`);
-  console.log(`   📊 Total rows processed: ${zeptoData.length}`);
+  console.log(`\n✅ B2B Order sync completed:`);
+  console.log(`   📊 Total EANs processed: ${eanMap.size}`);
   console.log(`   🔄 Updated: ${updateCount}`);
   console.log(`   ➕ Inserted: ${insertCount}`);
   console.log(`   ⏭️  Skipped: ${skipCount}`);
 }
 
 module.exports = {
-  writeHistoryOperationZepto,
+  writeB2BOrderData,
 };

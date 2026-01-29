@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const userRoutes = require('./routes/userRoutes');
+const channelDrrSyncRoute = require('./routes/channelDrrSync');
 const startHistorySyncJob = require('./jobs/historySync.job');
 
 const app = express();
@@ -10,6 +11,8 @@ app.use(bodyParser.json());
 
 // Routes
 app.use('/api/users', userRoutes);
+app.use('/api', channelDrrSyncRoute);
+
 
 // Start cron jobs
 startHistorySyncJob();

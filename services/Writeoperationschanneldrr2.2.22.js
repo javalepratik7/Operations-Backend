@@ -1,8 +1,8 @@
 const historyDb = require('../db/historyDb');
 
-async function writeHistoryOperationZepto(zeptoData) {
-  if (!zeptoData || zeptoData.length === 0) {
-    console.log('ℹ️ No Zepto data to write');
+async function writeOperationsChannelDRR(channelData) {
+  if (!channelData || channelData.length === 0) {
+    console.log('ℹ️ No Channel DRR data to write');
     return;
   }
 
@@ -10,29 +10,38 @@ async function writeHistoryOperationZepto(zeptoData) {
   let insertCount = 0;
   let skipCount = 0;
 
-  for (const row of zeptoData) {
+  for (const row of channelData) {
     const {
-      ean,           // From Zepto data
-      drr_30d,
-      drr_14d,
-      drr_7d,
+      ean,
+      allocated_on_hold_increff_units,
+      increff_units,
+      amazon_drr,
+      flipkart_drr,
+      myntra_drr,
     } = row;
 
-    // Map Zepto DRR fields → sku_inventory_report columns
-    const Zepto_drr_7d   = drr_7d;
-    const Zepto_drr_15d  = drr_14d;
-    const Zepto_drr_30d  = drr_30d;
+    // Map operations_db fields → sku_inventory_report columns
+    const allocated_on_hold = allocated_on_hold_increff_units;
+    const increff_units_value = increff_units;
+    const fba_drr = amazon_drr;
+    const fbf_drr = flipkart_drr;
+    const myntra_drr_value = myntra_drr;
 
     console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(`   Data: 7d=${Zepto_drr_7d}, 15d=${Zepto_drr_15d}, 30d=${Zepto_drr_30d}`);
+    console.log(`   Data: allocated_on_hold=${allocated_on_hold}, increff_units=${increff_units_value}`);
+    console.log(`   DRR: fba=${fba_drr}, fbf=${fbf_drr}, myntra=${myntra_drr_value}`);
 
     try {
       // 1️⃣ Try UPDATE the last 12 hours
       const [updateResult] = await historyDb.query(
         `UPDATE sku_inventory_report
-         SET Zepto_B2B_drr_7d = ?, Zepto_B2B_drr_15d = ?, Zepto_B2B_drr_30d = ?
+         SET allocated_on_hold = ?,
+             increff_units = ?,
+             fba_drr = ?,
+             fbf_drr = ?,
+             myntra_drr = ?
          WHERE ean_code = ? AND created_at >= NOW() - INTERVAL 12 HOUR`,
-        [Zepto_drr_7d, Zepto_drr_15d, Zepto_drr_30d, ean]
+        [allocated_on_hold, increff_units_value, fba_drr, fbf_drr, myntra_drr_value, ean]
       );
 
       console.log(`   ✓ Update affected rows: ${updateResult.affectedRows}`);
@@ -204,15 +213,16 @@ async function writeHistoryOperationZepto(zeptoData) {
           Zepto_B2B_drr_7d,
           Zepto_B2B_drr_15d,
           Zepto_B2B_drr_30d,
-          created_at,
+
           swiggy_state,
           swiggy_city,
           swiggy_area_name,
           swiggy_store_id,
           swiggy_drr_7d,
           swiggy_drr_14d,
-          swiggy_drr_30d
+          swiggy_drr_30d,
 
+          created_at
         )
         SELECT
           brand,
@@ -245,9 +255,9 @@ async function writeHistoryOperationZepto(zeptoData) {
 
           kv_allocated_on_hold,
 
-          increff_units,
+          ?,
           website_drr,
-          allocated_on_hold,
+          ?,
           increff_day_cover,
 
           kvt_units,
@@ -259,15 +269,15 @@ async function writeHistoryOperationZepto(zeptoData) {
 
           fba_units_gb,
           fba_bundled_units,
-          fba_drr,
+          ?,
 
           fbf_units_gb,
           fbf_bundled_units,
-          fbf_drr,
+          ?,
 
           myntra_units_gb,
           myntra_bundled_units,
-          myntra_drr,
+          ?,
 
           rk_world_stock,
           rk_world_speed,
@@ -355,21 +365,25 @@ async function writeHistoryOperationZepto(zeptoData) {
           total_speed,
           total_day_cover,
           total_cogs,
+
+          Zepto_B2B_drr_7d,
+          Zepto_B2B_drr_15d,
+          Zepto_B2B_drr_30d,
+
           swiggy_state,
           swiggy_city,
           swiggy_area_name,
           swiggy_store_id,
           swiggy_drr_7d,
           swiggy_drr_14d,
-          swiggy_drr_30d
+          swiggy_drr_30d,
 
-
-          ?, ?, ?, NOW()
+          NOW()
         FROM sku_inventory_report
         WHERE ean_code = ?
         ORDER BY created_at DESC
         LIMIT 1`,
-        [Zepto_drr_7d, Zepto_drr_15d, Zepto_drr_30d, ean]
+        [increff_units_value, allocated_on_hold, fba_drr, fbf_drr, myntra_drr_value, ean]
       );
 
       console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
@@ -385,13 +399,13 @@ async function writeHistoryOperationZepto(zeptoData) {
     }
   }
 
-  console.log(`\n✅ Zepto history sync completed:`);
-  console.log(`   📊 Total rows processed: ${zeptoData.length}`);
+  console.log(`\n✅ Channel DRR sync completed:`);
+  console.log(`   📊 Total rows processed: ${channelData.length}`);
   console.log(`   🔄 Updated: ${updateCount}`);
   console.log(`   ➕ Inserted: ${insertCount}`);
   console.log(`   ⏭️  Skipped: ${skipCount}`);
 }
 
 module.exports = {
-  writeHistoryOperationZepto,
+  writeOperationsChannelDRR,
 };
