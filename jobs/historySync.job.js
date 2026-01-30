@@ -113,6 +113,19 @@ function startHistorySyncJob() {
         }
 
         console.log('\n🎉 All history sync completed successfully at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
+        
+        // ==================== FINAL SUMMARY ====================
+        console.log('\n📊 ========== SYNC SUMMARY ==========');
+        console.log(`📱 Zepto Records: ${zeptoData?.length || 0}`);
+        console.log(`🛒 Blinkit Records: ${blinkitData?.length || 0}`);
+        console.log(`🍔 Swiggy Records: ${swiggyData?.length || 0}`);
+        console.log(`📊 Channel DRR Records: ${channelData?.length || 0}`);
+        console.log(`📦 Inventory Details Records: ${inventoryData?.length || 0}`);
+        console.log(`📦 B2B Order Records: ${b2bOrderData?.length || 0}`);
+        console.log(`🛒 Blinkit Marketplace Records: ${blinkitMarketplaceData?.length || 0}`);
+        console.log(`📈 Total Records Synced: ${(zeptoData?.length || 0) + (blinkitData?.length || 0) + (swiggyData?.length || 0) + (channelData?.length || 0) + (inventoryData?.length || 0) + (b2bOrderData?.length || 0) + (blinkitMarketplaceData?.length || 0)}`);
+        console.log('=====================================\n');
+        
       } catch (error) {
         console.error('❌ History sync failed:', error);
         console.error('Error stack:', error.stack);
