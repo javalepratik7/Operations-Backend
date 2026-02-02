@@ -1,18 +1,22 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const cors = require('cors');
 require('dotenv').config();
 
 const userRoutes = require('./routes/userRoutes');
 const channelDrrSyncRoute = require('./routes/channelDrrSync');
+const inventoryRoute = require('./routes/Inventory.js');
 const startHistorySyncJob = require('./jobs/historySync.job');
 
 const app = express();
+
+app.use(cors()); // <-- this line is enough for public access
 app.use(bodyParser.json());
 
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api', channelDrrSyncRoute);
-
+app.use('/api/inventory', inventoryRoute);
 
 // Start cron jobs
 startHistorySyncJob();
