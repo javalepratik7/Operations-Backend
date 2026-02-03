@@ -21,9 +21,13 @@ const { writeB2BOrderData } = require('../services/WritehistoryoperationOrderIte
 const { getBlinkitMarketplaceData } = require('../services/Readoperationsblinkitmarketplace19.5.2');
 const { writeBlinkitMarketplaceData } = require('../services/Writeoperationsblinkitmarketplace19.5.2');
 
+const { getWarehouseQuickCommData } = require('../services/Readoperationswarehousequickcomm');
+const { writeWarehouseQuickCommData } = require('../services/Writeoperationswarehousequickcomm');
+
 function startHistorySyncJob() {
   cron.schedule(
     '0 14 * * *', // every Time run on 2 pm
+    // '*/15 * * * *' , // every Time run on 15 min
     async () => {
       console.log('🕒 History sync job started at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
 
@@ -112,6 +116,18 @@ function startHistorySyncJob() {
           console.log('ℹ️ No Blinkit Marketplace data found, skipping write');
         }
 
+        // ==================== WAREHOUSE & QUICK COMMERCE CALCULATIONS ====================
+        console.log('\n🏭 Starting Warehouse & Quick Commerce calculations...');
+        const warehouseQuickCommData = await getWarehouseQuickCommData();
+        console.log(`📦 Warehouse & Quick Commerce rows fetched: ${warehouseQuickCommData.length}`);
+
+        if (warehouseQuickCommData && warehouseQuickCommData.length > 0) {
+          await writeWarehouseQuickCommData(warehouseQuickCommData);
+          console.log('✅ Warehouse & Quick Commerce calculations completed');
+        } else {
+          console.log('ℹ️ No Warehouse & Quick Commerce data found, skipping calculations');
+        }
+
         console.log('\n🎉 All history sync completed successfully at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
         
         // ==================== FINAL SUMMARY ====================
@@ -123,7 +139,17 @@ function startHistorySyncJob() {
         console.log(`📦 Inventory Details Records: ${inventoryData?.length || 0}`);
         console.log(`📦 B2B Order Records: ${b2bOrderData?.length || 0}`);
         console.log(`🛒 Blinkit Marketplace Records: ${blinkitMarketplaceData?.length || 0}`);
-        console.log(`📈 Total Records Synced: ${(zeptoData?.length || 0) + (blinkitData?.length || 0) + (swiggyData?.length || 0) + (channelData?.length || 0) + (inventoryData?.length || 0) + (b2bOrderData?.length || 0) + (blinkitMarketplaceData?.length || 0)}`);
+        console.log(`🏭 Warehouse & Quick Commerce Records: ${warehouseQuickCommData?.length || 0}`);
+        console.log(`📈 Total Records Synced: ${
+          (zeptoData?.length || 0) + 
+          (blinkitData?.length || 0) + 
+          (swiggyData?.length || 0) + 
+          (channelData?.length || 0) + 
+          (inventoryData?.length || 0) + 
+          (b2bOrderData?.length || 0) + 
+          (blinkitMarketplaceData?.length || 0) + 
+          (warehouseQuickCommData?.length || 0)
+        }`);
         console.log('=====================================\n');
         
       } catch (error) {

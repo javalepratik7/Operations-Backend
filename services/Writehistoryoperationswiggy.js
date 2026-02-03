@@ -20,6 +20,7 @@ async function writeHistoryOperationSwiggy(swiggyData) {
       drr_14d,
       drr_7d,
       ean, // ✅ ONLY EAN USED — FROM INPUT
+      units_sold, // ✅ NEW FIELD
     } = row;
 
     if (!ean) {
@@ -34,6 +35,8 @@ async function writeHistoryOperationSwiggy(swiggyData) {
     const swiggy_drr_7d = drr_7d;
     const swiggy_drr_14d = drr_14d;
     const swiggy_drr_30d = drr_30d;
+    const swiggy_stock = units_sold; // ✅ units_sold becomes swiggy_stock
+    const swiggy_speed = drr_7d; // ✅ using 7-day DRR as speed
 
     console.log(`\n📦 Processing EAN: ${ean}`);
 
@@ -47,7 +50,9 @@ async function writeHistoryOperationSwiggy(swiggyData) {
              swiggy_store_id = ?,
              swiggy_drr_7d = ?,
              swiggy_drr_14d = ?,
-             swiggy_drr_30d = ?
+             swiggy_drr_30d = ?,
+             swiggy_stock = ?,
+             swiggy_speed = ?
          WHERE ean_code = ?
            AND created_at >= NOW() - INTERVAL 1 DAY`,
         [
@@ -58,12 +63,15 @@ async function writeHistoryOperationSwiggy(swiggyData) {
           swiggy_drr_7d,
           swiggy_drr_14d,
           swiggy_drr_30d,
+          swiggy_stock,
+          swiggy_speed,
           ean,
         ]
       );
 
       if (updateResult.affectedRows > 0) {
         updateCount++;
+        console.log(`   ✅ Updated ${updateResult.affectedRows} record(s)`);
         continue;
       }
 
@@ -102,6 +110,8 @@ async function writeHistoryOperationSwiggy(swiggyData) {
             swiggy_drr_7d,
             swiggy_drr_14d,
             swiggy_drr_30d,
+            swiggy_stock,
+            swiggy_speed,
 
             created_at
           )
@@ -122,7 +132,7 @@ async function writeHistoryOperationSwiggy(swiggyData) {
             launch_date,
             is_bundle,
 
-            ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?, ?,
             NOW()
           FROM sku_inventory_report
           WHERE ean_code = ?
@@ -136,11 +146,14 @@ async function writeHistoryOperationSwiggy(swiggyData) {
             swiggy_drr_7d,
             swiggy_drr_14d,
             swiggy_drr_30d,
+            swiggy_stock,
+            swiggy_speed,
             ean,
           ]
         );
 
         snapshotInsertCount++;
+        console.log(`   📸 Created snapshot with Swiggy data`);
         continue;
       }
 
@@ -155,9 +168,11 @@ async function writeHistoryOperationSwiggy(swiggyData) {
           swiggy_drr_7d,
           swiggy_drr_14d,
           swiggy_drr_30d,
+          swiggy_stock,
+          swiggy_speed,
           created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
           ean,
           swiggy_state,
@@ -167,10 +182,13 @@ async function writeHistoryOperationSwiggy(swiggyData) {
           swiggy_drr_7d,
           swiggy_drr_14d,
           swiggy_drr_30d,
+          swiggy_stock,
+          swiggy_speed,
         ]
       );
 
       freshInsertCount++;
+      console.log(`   🆕 Created fresh record with Swiggy data`);
 
     } catch (error) {
       console.error(`❌ Error processing EAN ${ean}:`, error.message);

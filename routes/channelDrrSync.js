@@ -14,6 +14,9 @@ const { writeB2BOrderData } = require('../services/WritehistoryoperationOrderIte
 const { getBlinkitMarketplaceData } = require('../services/Readoperationsblinkitmarketplace19.5.2');
 const { writeBlinkitMarketplaceData } = require('../services/Writeoperationsblinkitmarketplace19.5.2');
 
+const { getWarehouseQuickCommData } = require('../services/Readoperationswarehousequickcomm');
+const { writeWarehouseQuickCommData } = require('../services/Writeoperationswarehousequickcomm');
+
 
 
 // ==================== CHANNEL DRR SYNC ENDPOINT ====================
@@ -239,6 +242,46 @@ router.get('/blinkit-marketplace', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Blinkit Marketplace sync failed',
+      error: error.message
+    });
+  }
+});
+
+
+// ==================== WAREHOUSE & QUICK COMMERCE SYNC ENDPOINT (NEW) ====================
+router.get('/warehouse-quickcomm', async (req, res) => {
+  try {
+    console.log('\n🏭 Starting Warehouse & Quick Commerce calculations...');
+
+    const warehouseQuickCommData = await getWarehouseQuickCommData();
+    console.log(`📦 Warehouse & Quick Commerce rows fetched: ${warehouseQuickCommData.length}`);
+
+    if (warehouseQuickCommData && warehouseQuickCommData.length > 0) {
+      await writeWarehouseQuickCommData(warehouseQuickCommData);
+      console.log('✅ Warehouse & Quick Commerce calculations completed');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Warehouse & Quick Commerce calculations executed successfully',
+        rowsFetched: warehouseQuickCommData.length
+      });
+    } else {
+      console.log('ℹ️ No Warehouse & Quick Commerce data found, skipping calculations');
+
+      return res.status(200).json({
+        success: true,
+        message: 'No Warehouse & Quick Commerce data found to process',
+        rowsFetched: 0
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Warehouse & Quick Commerce calculations failed:', error.message);
+    console.error('Full error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Warehouse & Quick Commerce calculations failed',
       error: error.message
     });
   }
