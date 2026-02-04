@@ -24,6 +24,9 @@ const { writeBlinkitMarketplaceData } = require('../services/Writeoperationsblin
 const { getWarehouseQuickCommData } = require('../services/Readoperationswarehousequickcomm');
 const { writeWarehouseQuickCommData } = require('../services/Writeoperationswarehousequickcomm');
 
+const { writeUpcomingStocksSnapshot } = require('../services/writeUpcomingStocks');
+
+
 function startHistorySyncJob() {
   cron.schedule(
     '0 14 * * *', // every Time run on 2 pm
@@ -127,6 +130,16 @@ function startHistorySyncJob() {
         } else {
           console.log('ℹ️ No Warehouse & Quick Commerce data found, skipping calculations');
         }
+
+        // ==================== UPCOMING STOCKS SNAPSHOT ====================
+        console.log('\n📈 Starting Upcoming Stocks snapshot insert...');
+
+        const upcomingStocksResult = await writeUpcomingStocksSnapshot();
+
+        console.log(
+          `✅ Upcoming Stocks snapshot completed. Rows inserted: ${upcomingStocksResult.affectedRows}`
+        );
+
 
         console.log('\n🎉 All history sync completed successfully at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
         

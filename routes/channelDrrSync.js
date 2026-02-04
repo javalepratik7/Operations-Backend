@@ -17,6 +17,9 @@ const { writeBlinkitMarketplaceData } = require('../services/Writeoperationsblin
 const { getWarehouseQuickCommData } = require('../services/Readoperationswarehousequickcomm');
 const { writeWarehouseQuickCommData } = require('../services/Writeoperationswarehousequickcomm');
 
+const { writeUpcomingStocksSnapshot } = require('../services/writeUpcomingStocks');
+
+
 
 
 // ==================== CHANNEL DRR SYNC ENDPOINT ====================
@@ -286,6 +289,37 @@ router.get('/warehouse-quickcomm', async (req, res) => {
     });
   }
 });
+
+
+// ==================== UPCOMING STOCKS SNAPSHOT SYNC (NEW) ====================
+router.get('/upcoming-stocks', async (req, res) => {
+  try {
+    console.log('\n📈 Starting Upcoming Stocks snapshot insert...');
+
+    const result = await writeUpcomingStocksSnapshot();
+
+    console.log(
+      `✅ Upcoming Stocks snapshot completed. Rows inserted: ${result.affectedRows}`
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Upcoming Stocks snapshot executed successfully',
+      rowsInserted: result.affectedRows
+    });
+
+  } catch (error) {
+    console.error('❌ Upcoming Stocks snapshot failed:', error.message);
+    console.error('Full error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Upcoming Stocks snapshot failed',
+      error: error.message
+    });
+  }
+});
+
 
 
 

@@ -1,5 +1,9 @@
 const historyDb = require('../db/historyDb');
 
+/**
+ * Fetch recent data only (last 2 days is enough)
+ * We still group by EAN in the writer
+ */
 async function getWarehouseQuickCommData() {
   const [rows] = await historyDb.query(`
     SELECT 
@@ -40,9 +44,20 @@ async function getWarehouseQuickCommData() {
       quickcomm_speed_7_days,
       quickcomm_speed_15_days,
       quickcomm_speed_30_days,
+      vendor_increff,
+      vendor_to_pc,
+      vendor_to_fba,
+      vendor_to_fbf,
+      vendor_to_kv,
+      pc_to_fba,
+      pc_to_fbf,
+      pc_to_increff,
+      kv_to_fba,
+      kv_to_fbf,
       created_at
     FROM history_operations_db.sku_inventory_report
     WHERE ean_code IS NOT NULL
+      AND created_at >= NOW() - INTERVAL 2 DAY
     ORDER BY created_at DESC
   `);
 
@@ -50,6 +65,9 @@ async function getWarehouseQuickCommData() {
   return rows;
 }
 
+/**
+ * Quick commerce historical stock
+ */
 async function getQuickCommHistoricalData(eanCode, days) {
   const [rows] = await historyDb.query(`
     SELECT 
@@ -64,6 +82,9 @@ async function getQuickCommHistoricalData(eanCode, days) {
   return rows;
 }
 
+/**
+ * Warehouse historical stock
+ */
 async function getWarehouseHistoricalData(eanCode, days) {
   const [rows] = await historyDb.query(`
     SELECT 
