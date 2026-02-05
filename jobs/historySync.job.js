@@ -25,6 +25,7 @@ const { getWarehouseQuickCommData } = require('../services/Readoperationswarehou
 const { writeWarehouseQuickCommData } = require('../services/Writeoperationswarehousequickcomm');
 
 const { writeUpcomingStocksSnapshot } = require('../services/writeUpcomingStocks');
+const { writeInventoryPlanningSnapshot } = require('../services/writeInventoryPlanningSnapshot');
 
 
 function startHistorySyncJob() {
@@ -135,6 +136,13 @@ function startHistorySyncJob() {
         console.log('\n📈 Starting Upcoming Stocks snapshot insert...');
 
         const upcomingStocksResult = await writeUpcomingStocksSnapshot();
+
+
+        // ==================== INVENTORY PLANNING SNAPSHOT ====================
+        console.log('\n📊 Starting Inventory Planning snapshot...');
+        await writeInventoryPlanningSnapshot();
+        console.log('✅ Inventory Planning snapshot completed');
+
 
         console.log(
           `✅ Upcoming Stocks snapshot completed. Rows inserted: ${upcomingStocksResult.affectedRows}`

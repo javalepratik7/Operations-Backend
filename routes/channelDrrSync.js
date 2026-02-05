@@ -18,7 +18,7 @@ const { getWarehouseQuickCommData } = require('../services/Readoperationswarehou
 const { writeWarehouseQuickCommData } = require('../services/Writeoperationswarehousequickcomm');
 
 const { writeUpcomingStocksSnapshot } = require('../services/writeUpcomingStocks');
-
+const { writeInventoryPlanningSnapshot } = require('../services/writeInventoryPlanningSnapshot');
 
 
 
@@ -315,6 +315,33 @@ router.get('/upcoming-stocks', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Upcoming Stocks snapshot failed',
+      error: error.message
+    });
+  }
+});
+
+// ==================== INVENTORY PLANNING SNAPSHOT (TEST ONLY) ====================
+router.get('/inventory-planning-test', async (req, res) => {
+  try {
+    console.log('\n🧪 TEST: Starting Inventory Planning snapshot...');
+
+    const result = await writeInventoryPlanningSnapshot();
+
+    console.log('✅ TEST: Inventory Planning snapshot completed');
+
+    return res.status(200).json({
+      success: true,
+      message: 'Inventory Planning snapshot test executed successfully',
+      result: result || null
+    });
+
+  } catch (error) {
+    console.error('❌ TEST: Inventory Planning snapshot failed:', error.message);
+    console.error('Full error:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Inventory Planning snapshot test failed',
       error: error.message
     });
   }
