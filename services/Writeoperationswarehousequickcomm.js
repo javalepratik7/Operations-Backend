@@ -72,7 +72,6 @@ async function writeWarehouseQuickCommData(inventoryData) {
         (drr || 0) +
         (fba_drr || 0) +
         (fbf_drr || 0) +
-        (blinkit_marketplace_speed || 0) +
         (myntra_drr || 0);
 
       const warehouse_total_stock =
@@ -109,6 +108,7 @@ async function writeWarehouseQuickCommData(inventoryData) {
       const quick_comm_total_stock =
         (zepto_stock || 0) +
         (blinkit_b2b_stock || 0) +
+        (blinkit_marketplace_speed || 0) +
         (swiggy_stock || 0);
 
       const quick_comm_total_speed =
