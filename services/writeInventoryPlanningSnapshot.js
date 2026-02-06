@@ -26,28 +26,20 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
     for (const row of eanRows) {
       const eanCode = row.ean_code;
 
-      /**
-       * 2️⃣ DRR (30 days)
-       * DRR = quick commerce 30d + warehouse 30d
-       */
+      /* 2️⃣ DRR (30 days) */
       const drr30 =
         (Number(row.quickcomm_speed_30_days) || 0) +
         (Number(row.warehouse_speed_30_days) || 0);
 
-      /**
-       * 3️⃣ Current stock
-       */
+      /* 3️⃣ Current stock */
       const currentStock = Number(row.total_stock) || 0;
 
-      /**
-       * 4️⃣ Lead time & safety stock
-       */
+      /* 4️⃣ Lead time & safety stock */
       const leadTimeDays = Number(row.lead_time_vendor_lt) || 0;
       const safetyStockDays = 40;
+      const poBufferDays = 15;
 
-      /**
-       * 5️⃣ Upcoming stock (MAIN - SUB)
-       */
+      /* 5️⃣ Upcoming stock (MAIN - SUB)*/
       const [[upcomingRow]] = await historyDb.query(
         `
         SELECT
@@ -75,29 +67,27 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
 
       const upcomingStock = Number(upcomingRow?.upcoming_stock) || 0;
 
-      /**
-       * 6️⃣ In-transit stock
-       */
-      const [[transitRow]] = await historyDb.query(
-        `
-        SELECT COALESCE(SUM(\`In Transit Quantity\`), 0) AS in_transit_stock
-        FROM history_operations_db.upcoming_stocks
-        WHERE ean = ?
-        `,
-        [eanCode]
-      );
+      /* 6️⃣ In-transit stock */
+      const inTransitStock =
+        (Number(row.vendor_increff) || 0) +
+        (Number(row.vendor_to_pc) || 0) +
+        (Number(row.vendor_to_fba) || 0) +
+        (Number(row.vendor_to_fbf) || 0) +
+        (Number(row.vendor_to_kv) || 0) +
+        (Number(row.pc_to_fba) || 0) +
+        (Number(row.pc_to_fbf) || 0) +
+        (Number(row.pc_to_increff) || 0) +
+        (Number(row.kv_to_fba) || 0) +
+        (Number(row.kv_to_fbf) || 0);
 
-      const inTransitStock = Number(transitRow?.in_transit_stock) || 0;
-
-      /**
-       * 7️⃣ Reorder level
-       */
+      /* 7️⃣ Reorder level */
       const reorderLevel = drr30 * (leadTimeDays + safetyStockDays);
 
-      /**
-       * 8️⃣ Days of cover
-       * (NO DIVISION BY ZERO)
-       */
+      /* 8️⃣ PO Intent Units ✅ NEW */
+      const poIntentUnits =
+        drr30 * (leadTimeDays + poBufferDays);
+
+      /* 9️⃣ Days of cover */
       const daysOfCover =
         drr30 > 0 ? (currentStock + inTransitStock) / drr30 : 0;
 
@@ -106,9 +96,7 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
           ? (currentStock + inTransitStock + upcomingStock) / drr30
           : 0;
 
-      /**
-       * 9️⃣ Inventory status
-       */
+      /* 🔟 Inventory status */
       let inventoryStatus = 'OK';
 
       if (currentStock + inTransitStock + upcomingStock <= reorderLevel) {
@@ -119,9 +107,7 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
         inventoryStatus = 'OVER_STOCK';
       }
 
-      /**
-       * 🔟 Insert snapshot (1 row per EAN per day)
-       */
+      /* 1️⃣1️⃣ Insert snapshot */
       await historyDb.query(
         `
         INSERT INTO history_operations_db.inventory_planning_snapshot (
@@ -133,13 +119,14 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
           in_transit_stock,
           upcoming_stock,
           reorder_level,
+          po_intent_units,
           days_of_cover,
           days_of_cover_with_po,
           inventory_status,
           snapshot_date
         )
         VALUES (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE()
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE()
         )
         ON DUPLICATE KEY UPDATE
           drr_30d = VALUES(drr_30d),
@@ -147,6 +134,7 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
           in_transit_stock = VALUES(in_transit_stock),
           upcoming_stock = VALUES(upcoming_stock),
           reorder_level = VALUES(reorder_level),
+          po_intent_units = VALUES(po_intent_units),
           days_of_cover = VALUES(days_of_cover),
           days_of_cover_with_po = VALUES(days_of_cover_with_po),
           inventory_status = VALUES(inventory_status),
@@ -161,6 +149,7 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
           inTransitStock,
           upcomingStock,
           reorderLevel,
+          Math.ceil(poIntentUnits),
           Number(daysOfCover.toFixed(2)),
           Number(daysOfCoverWithPO.toFixed(2)),
           inventoryStatus

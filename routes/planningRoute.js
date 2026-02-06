@@ -10,9 +10,9 @@ router.get('/planning', async (req, res) => {
     const offset = (page - 1) * limit;
 
     /* =========================================================
-       SUMMARY (FROM inventory_planning_snapshot)
+       SUMMARY
     ========================================================= */
-    const summaryQuery = `
+    const [[summary]] = await historyDb.query(`
       SELECT
         SUM(current_stock) AS current_stock,
         SUM(in_transit_stock) AS in_transit,
@@ -24,19 +24,21 @@ router.get('/planning', async (req, res) => {
           THEN current_stock ELSE 0 END
         ) AS over_inventory,
 
-        SUM(current_stock * drr_30d) AS inventory_cogs,
-
         SUM(inventory_status = 'LOW_STOCK') AS stock_alert,
         SUM(inventory_status = 'PO_REQUIRED') AS po_required,
+
+        SUM(
+          CASE WHEN inventory_status = 'PO_REQUIRED'
+          THEN po_intent_units ELSE 0 END
+        ) AS total_po_intent_units,
 
         ROUND(AVG(days_of_cover), 2) AS avg_days_cover
       FROM history_operations_db.inventory_planning_snapshot
       WHERE snapshot_date = CURDATE()
-    `;
-    const [[summary]] = await historyDb.query(summaryQuery);
+    `);
 
     /* =========================================================
-       DAYS COVER TREND (LAST 7 SNAPSHOTS)
+       DAYS COVER TREND
     ========================================================= */
     const [daysCoverTrend] = await historyDb.query(`
       SELECT
@@ -49,7 +51,7 @@ router.get('/planning', async (req, res) => {
     `);
 
     /* =========================================================
-       INVENTORY DISTRIBUTION (LATEST SKU SNAPSHOT)
+       INVENTORY DISTRIBUTION (LATEST SKU PER EAN)
     ========================================================= */
     const [[distribution]] = await historyDb.query(`
       SELECT
@@ -60,62 +62,127 @@ router.get('/planning', async (req, res) => {
         SUM(fbf_units_gb + fbf_bundled_units) AS fbf,
         SUM(myntra_units_gb + myntra_bundled_units) AS myntra,
         SUM(rk_world_stock) AS rk_world
-      FROM history_operations_db.sku_inventory_report
-      WHERE created_at = (
-        SELECT MAX(created_at)
-        FROM history_operations_db.sku_inventory_report
-      )
+      FROM (
+        SELECT sir1.*
+        FROM history_operations_db.sku_inventory_report sir1
+        INNER JOIN (
+          SELECT ean_code, MAX(created_at) AS max_created_at
+          FROM history_operations_db.sku_inventory_report
+          GROUP BY ean_code
+        ) sir2
+          ON sir1.ean_code = sir2.ean_code
+         AND sir1.created_at = sir2.max_created_at
+      ) latest_sir
     `);
 
     /* =========================================================
-       QUICK COMMERCE SPEED
-    ========================================================= */
-    const [[quickComm]] = await historyDb.query(`
-      SELECT
-        SUM(Instamart_B2B_drr_30d) AS instamart,
-        SUM(Zepto_B2B_drr_30d) AS zepto,
-        SUM(blinkit_b2b_drr_30d) AS blinkit_b2b,
-        SUM(blinkit_marketplace_speed_30_days) AS blinkit_b2c
-      FROM history_operations_db.sku_inventory_report
-      WHERE created_at = (
-        SELECT MAX(created_at)
-        FROM history_operations_db.sku_inventory_report
-      )
-    `);
-
-    /* =========================================================
-       SKU INVENTORY DETAILS (ORDERED BY STATUS)
+       SKU INVENTORY DETAILS (LATEST SKU PER EAN)
     ========================================================= */
     const skuQuery = `
-      SELECT *
-      FROM history_operations_db.inventory_planning_snapshot
-      WHERE snapshot_date = CURDATE()
+      SELECT
+        ips.id,
+        ips.ean_code,
+        ips.drr_30d,
+        ips.lead_time_days,
+        ips.safety_stock_days,
+        ips.current_stock,
+        ips.in_transit_stock,
+        ips.upcoming_stock,
+        ips.reorder_level,
+        ips.po_intent_units,
+        ips.days_of_cover,
+        ips.days_of_cover_with_po,
+        ips.inventory_status,
+        ips.snapshot_date,
+
+        sir.brand,
+        sir.gb_sku,
+        sir.asin,
+        sir.multiple_listing,
+        sir.product_title,
+        sir.category,
+        sir.mrp,
+        sir.selling_price,
+        sir.cogs,
+        sir.pack_size,
+        sir.lead_time_vendor_lt,
+        sir.vendor_name,
+        sir.launch_date,
+        sir.is_bundle,
+
+        sir.increff_units,
+        sir.kvt_units,
+        sir.pc_units,
+        sir.fba_units_gb,
+        sir.fba_bundled_units,
+        sir.fbf_units_gb,
+        sir.fbf_bundled_units,
+        sir.myntra_units_gb,
+        sir.myntra_bundled_units,
+        sir.rk_world_stock,
+
+        sir.marketplace_total_stock,
+        sir.marketplace_total_speed,
+        sir.marketplace_total_days_of_cover,
+
+        sir.total_stock,
+        sir.total_speed,
+        sir.total_day_cover
+      FROM history_operations_db.inventory_planning_snapshot ips
+      LEFT JOIN (
+        SELECT sir1.*
+        FROM history_operations_db.sku_inventory_report sir1
+        INNER JOIN (
+          SELECT ean_code, MAX(created_at) AS max_created_at
+          FROM history_operations_db.sku_inventory_report
+          GROUP BY ean_code
+        ) sir2
+          ON sir1.ean_code = sir2.ean_code
+         AND sir1.created_at = sir2.max_created_at
+      ) sir
+        ON sir.ean_code = ips.ean_code
+      WHERE ips.snapshot_date = CURDATE()
       ORDER BY
-        FIELD(inventory_status, 'LOW_STOCK', 'PO_REQUIRED', 'OVER_STOCK'),
-        days_of_cover ASC
+        FIELD(ips.inventory_status, 'LOW_STOCK', 'PO_REQUIRED', 'OVER_STOCK'),
+        ips.days_of_cover ASC
       LIMIT ? OFFSET ?
     `;
+
     const [sku_inventory_details] = await historyDb.query(
       skuQuery,
       [Number(limit), Number(offset)]
     );
 
     /* =========================================================
-       FILTER DATA
-       (get all unique values for frontend filters)
+       FILTERS
     ========================================================= */
-    const [brands] = await historyDb.query(
-      `SELECT DISTINCT brand FROM history_operations_db.sku_inventory_report ORDER BY brand`
-    );
-    const [vendors] = await historyDb.query(
-      `SELECT DISTINCT vendor_name AS vendor FROM history_operations_db.sku_inventory_report ORDER BY vendor_name`
-    );
-    const [categories] = await historyDb.query(
-      `SELECT DISTINCT category FROM history_operations_db.sku_inventory_report ORDER BY category`
-    );
-    const [locations] = await historyDb.query(
-      `SELECT DISTINCT swiggy_city AS location FROM history_operations_db.sku_inventory_report ORDER BY swiggy_city`
-    );
+    const [brands] = await historyDb.query(`
+      SELECT DISTINCT brand
+      FROM history_operations_db.sku_inventory_report
+      WHERE brand IS NOT NULL
+      ORDER BY brand
+    `);
+
+    const [vendors] = await historyDb.query(`
+      SELECT DISTINCT vendor_name AS vendor
+      FROM history_operations_db.sku_inventory_report
+      WHERE vendor_name IS NOT NULL
+      ORDER BY vendor_name
+    `);
+
+    const [categories] = await historyDb.query(`
+      SELECT DISTINCT category
+      FROM history_operations_db.sku_inventory_report
+      WHERE category IS NOT NULL
+      ORDER BY category
+    `);
+
+    const [locations] = await historyDb.query(`
+      SELECT DISTINCT swiggy_city AS location
+      FROM history_operations_db.sku_inventory_report
+      WHERE swiggy_city IS NOT NULL
+      ORDER BY swiggy_city
+    `);
 
     /* =========================================================
        RESPONSE
@@ -127,13 +194,11 @@ router.get('/planning', async (req, res) => {
         in_transit: Number(summary?.in_transit || 0),
         upcoming_stock: Number(summary?.upcoming_stock || 0),
         over_inventory: Number(summary?.over_inventory || 0),
-        inventory_cogs: Number(summary?.inventory_cogs || 0),
         stock_alert: Number(summary?.stock_alert || 0),
         po_required: Number(summary?.po_required || 0),
+        total_po_intent_units: Number(summary?.total_po_intent_units || 0),
         avg_days_cover: Number(summary?.avg_days_cover || 0),
-
         days_cover_trend: daysCoverTrend.reverse(),
-
         inventory_distribution: {
           increff: Number(distribution?.increff || 0),
           kv_traders: Number(distribution?.kv_traders || 0),
@@ -142,29 +207,19 @@ router.get('/planning', async (req, res) => {
           fbf: Number(distribution?.fbf || 0),
           myntra: Number(distribution?.myntra || 0),
           rk_world: Number(distribution?.rk_world || 0)
-        },
-
-        quick_commerce_speed: {
-          instamart: Number(quickComm?.instamart || 0),
-          zepto: Number(quickComm?.zepto || 0),
-          blinkit_b2b: Number(quickComm?.blinkit_b2b || 0),
-          blinkit_b2c: Number(quickComm?.blinkit_b2c || 0)
         }
       },
-
       filters: {
         brands: brands.map(b => b.brand),
         vendors: vendors.map(v => v.vendor),
         categories: categories.map(c => c.category),
         locations: locations.map(l => l.location)
       },
-
       pagination: {
         page: Number(page),
         limit: Number(limit),
         returned: sku_inventory_details.length
       },
-
       sku_inventory_details
     });
   } catch (error) {

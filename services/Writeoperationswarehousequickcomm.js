@@ -51,6 +51,7 @@ async function writeWarehouseQuickCommData(inventoryData) {
       myntra_bundled_units,
       zepto_stock,
       blinkit_b2b_stock,
+      blinkit_marketplace_stock,
       swiggy_stock,
       vendor_increff,
       vendor_to_pc,
@@ -106,14 +107,15 @@ async function writeWarehouseQuickCommData(inventoryData) {
 
       // ================= QUICK COMMERCE =================
       const quick_comm_total_stock =
-        (zepto_stock || 0) +
-        (blinkit_b2b_stock || 0) +
-        (blinkit_marketplace_speed || 0) +
+        // (zepto_stock || 0) +
+        // (blinkit_b2b_stock || 0) +
+        (blinkit_marketplace_stock || 0) +
         (swiggy_stock || 0);
 
       const quick_comm_total_speed =
         (zepto_speed || 0) +
         (blinkit_b2b_speed || 0) +
+        (blinkit_marketplace_speed || 0) +
         (swiggy_speed || 0);
 
       const quick_comm_total_days_of_cover =
@@ -148,8 +150,8 @@ async function writeWarehouseQuickCommData(inventoryData) {
 
       const total_stock =
         warehouse_total_stock +
-        quick_comm_total_stock +
-        vendor_transfer_stock;
+        // vendor_transfer_stock +
+        quick_comm_total_stock ;
 
       // ================= UPDATE (EXACT ROW) =================
       const [result] = await historyDb.query(
