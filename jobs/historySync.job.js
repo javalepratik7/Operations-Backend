@@ -30,7 +30,7 @@ const { writeInventoryPlanningSnapshot } = require('../services/writeInventoryPl
 
 function startHistorySyncJob() {
   cron.schedule(
-    '3 16 * * *', // every Time run on 2 pm
+    '12 16 * * *', // every Time run on 2 pm
     // '*/15 * * * *' , // every Time run on 15 min
     async () => {
       console.log('🕒 History sync job started at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
