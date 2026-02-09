@@ -4,6 +4,11 @@ const {
   getWarehouseHistoricalData
 } = require('./Readoperationswarehousequickcomm');
 
+/**
+ * Safely convert DB values to numbers
+ */
+const n = (v) => Number(v) || 0;
+
 async function writeWarehouseQuickCommData(inventoryData) {
   if (!inventoryData || inventoryData.length === 0) return;
 
@@ -63,30 +68,38 @@ async function writeWarehouseQuickCommData(inventoryData) {
       pc_to_increff,
       kv_to_fba,
       kv_to_fbf,
+      Zepto_B2B_drr_30d,
+      swiggy_drr_30d,
+      blinkit_b2b_drr_30d,
+      blinkit_marketplace_speed_30_days,
       created_at
     } = row;
 
     try {
       // ================= WAREHOUSE =================
       const warehouse_total_speed =
-        (website_drr || 0) +
-        (drr || 0) +
-        (fba_drr || 0) +
-        (fbf_drr || 0) +
-        (myntra_drr || 0);
+        n(website_drr) +
+        n(drr) +
+        n(fba_drr) +
+        n(fbf_drr) +
+        n(blinkit_marketplace_speed_30_days) +
+        n(myntra_drr);
+
+      console.log('warehouse_total_speed', warehouse_total_speed);
 
       const warehouse_total_stock =
-        (increff_units || 0) +
-        (kvt_units || 0) +
-        (pc_units || 0) +
-        (allocated_on_hold || 0) +
-        (allocated_on_hold_pc_units || 0) +
-        (fba_units_gb || 0) +
-        (fba_bundled_units || 0) +
-        (fbf_units_gb || 0) +
-        (fbf_bundled_units || 0) +
-        (myntra_units_gb || 0) +
-        (myntra_bundled_units || 0);
+        n(increff_units) +
+        n(kvt_units) +
+        n(pc_units) +
+        n(allocated_on_hold) +
+        n(allocated_on_hold_pc_units) +
+        n(blinkit_marketplace_stock) +
+        n(fba_units_gb) +
+        n(fba_bundled_units) +
+        n(fbf_units_gb) +
+        n(fbf_bundled_units) +
+        n(myntra_units_gb) +
+        n(myntra_bundled_units);
 
       const warehouse_total_days_of_cover =
         warehouse_total_speed > 0
@@ -95,28 +108,30 @@ async function writeWarehouseQuickCommData(inventoryData) {
 
       const wh7 = await getWarehouseHistoricalData(ean_code, 7);
       const warehouse_speed_7_days =
-        wh7.length ? wh7.reduce((s, r) => s + (r.warehouse_total_stock || 0), 0) / 7 : 0;
+        wh7.length
+          ? wh7.reduce((s, r) => s + n(r.warehouse_total_stock), 0) / 7
+          : 0;
 
       const wh15 = await getWarehouseHistoricalData(ean_code, 15);
       const warehouse_speed_15_days =
-        wh15.length ? wh15.reduce((s, r) => s + (r.warehouse_total_stock || 0), 0) / 15 : 0;
+        wh15.length
+          ? wh15.reduce((s, r) => s + n(r.warehouse_total_stock), 0) / 15
+          : 0;
 
       const wh30 = await getWarehouseHistoricalData(ean_code, 30);
       const warehouse_speed_30_days =
-        wh30.length ? wh30.reduce((s, r) => s + (r.warehouse_total_stock || 0), 0) / 30 : 0;
+        wh30.length
+          ? wh30.reduce((s, r) => s + n(r.warehouse_total_stock), 0) / 30
+          : 0;
 
       // ================= QUICK COMMERCE =================
       const quick_comm_total_stock =
-        // (zepto_stock || 0) +
-        // (blinkit_b2b_stock || 0) +
-        (blinkit_marketplace_stock || 0) +
-        (swiggy_stock || 0);
+        n(swiggy_stock);
 
       const quick_comm_total_speed =
-        (zepto_speed || 0) +
-        (blinkit_b2b_speed || 0) +
-        (blinkit_marketplace_speed || 0) +
-        (swiggy_speed || 0);
+        n(zepto_speed) +
+        n(blinkit_b2b_speed) +
+        n(swiggy_speed);
 
       const quick_comm_total_days_of_cover =
         quick_comm_total_speed > 0
@@ -125,35 +140,40 @@ async function writeWarehouseQuickCommData(inventoryData) {
 
       const qc7 = await getQuickCommHistoricalData(ean_code, 7);
       const quickcomm_speed_7_days =
-        qc7.length ? qc7.reduce((s, r) => s + (r.quick_comm_total_stock || 0), 0) / 7 : 0;
+        qc7.length
+          ? qc7.reduce((s, r) => s + n(r.quick_comm_total_stock), 0) / 7
+          : 0;
 
       const qc15 = await getQuickCommHistoricalData(ean_code, 15);
       const quickcomm_speed_15_days =
-        qc15.length ? qc15.reduce((s, r) => s + (r.quick_comm_total_stock || 0), 0) / 15 : 0;
+        qc15.length
+          ? qc15.reduce((s, r) => s + n(r.quick_comm_total_stock), 0) / 15
+          : 0;
 
       const qc30 = await getQuickCommHistoricalData(ean_code, 30);
       const quickcomm_speed_30_days =
-        qc30.length ? qc30.reduce((s, r) => s + (r.quick_comm_total_stock || 0), 0) / 30 : 0;
+        qc30.length
+          ? qc30.reduce((s, r) => s + n(r.quick_comm_total_stock), 0) / 30
+          : 0;
 
       // ================= TOTAL STOCK =================
       const vendor_transfer_stock =
-        (vendor_increff || 0) +
-        (vendor_to_pc || 0) +
-        (vendor_to_fba || 0) +
-        (vendor_to_fbf || 0) +
-        (vendor_to_kv || 0) +
-        (pc_to_fba || 0) +
-        (pc_to_fbf || 0) +
-        (pc_to_increff || 0) +
-        (kv_to_fba || 0) +
-        (kv_to_fbf || 0);
+        n(vendor_increff) +
+        n(vendor_to_pc) +
+        n(vendor_to_fba) +
+        n(vendor_to_fbf) +
+        n(vendor_to_kv) +
+        n(pc_to_fba) +
+        n(pc_to_fbf) +
+        n(pc_to_increff) +
+        n(kv_to_fba) +
+        n(kv_to_fbf);
 
       const total_stock =
         warehouse_total_stock +
-        // vendor_transfer_stock +
-        quick_comm_total_stock ;
+        quick_comm_total_stock;
 
-      // ================= UPDATE (EXACT ROW) =================
+      // ================= UPDATE =================
       const [result] = await historyDb.query(
         `UPDATE history_operations_db.sku_inventory_report
          SET warehouse_total_speed = ?,

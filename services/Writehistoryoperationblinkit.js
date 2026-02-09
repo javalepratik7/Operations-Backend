@@ -16,7 +16,7 @@ async function writeHistoryOperationBlinkit(blinkitData) {
       drr_7d,
       drr_14d,
       drr_30d,
-      blinkit_b2b_stock, // 👈 from 27_jan_26
+      blinkit_b2b_stock,
     } = row;
 
     const blinkit_b2b_drr_7d  = drr_7d;
@@ -25,11 +25,12 @@ async function writeHistoryOperationBlinkit(blinkitData) {
 
     console.log(`\n📦 Processing EAN: ${ean}`);
     console.log(
-      `   Stock=${blinkit_b2b_stock}, DRR(7/15/30)=${blinkit_b2b_drr_7d}/${blinkit_b2b_drr_15d}/${blinkit_b2b_drr_30d}`
+      `   Stock=${blinkit_b2b_stock}, DRR(7/15/30)=` +
+      `${blinkit_b2b_drr_7d}/${blinkit_b2b_drr_15d}/${blinkit_b2b_drr_30d}`
     );
 
     try {
-      // 1️⃣ UPDATE last 12 hours
+      // 1️⃣ UPDATE records from last 12 hours
       const [updateResult] = await historyDb.query(
         `UPDATE sku_inventory_report
          SET blinkit_b2b_stock   = ?,
@@ -52,7 +53,7 @@ async function writeHistoryOperationBlinkit(blinkitData) {
         continue;
       }
 
-      // 2️⃣ Check base record
+      // 2️⃣ Check if base record exists
       const [existingRows] = await historyDb.query(
         `SELECT COUNT(*) AS count
          FROM sku_inventory_report
@@ -100,9 +101,11 @@ async function writeHistoryOperationBlinkit(blinkitData) {
           golocal_export_stock, golocal_export_speed, golocal_export_days_of_cover,
           pop_club_stock, pop_club_speed, pop_club_days_of_cover,
           b2b_speed_7_days, b2b_speed_15_days, b2b_speed_30_days,
+
           warehouse_total_stock, warehouse_total_speed, warehouse_total_days_of_cover,
           marketplace_total_stock, marketplace_total_speed, marketplace_total_days_of_cover,
           quick_comm_total_stock, quick_comm_total_speed, quick_comm_total_days_of_cover,
+
           b2b_stock, b2b_speed, b2b_days_of_cover,
           total_price_at_mrp, total_price_at_selling,
           total_stock, total_speed, total_day_cover, total_cogs,
@@ -141,9 +144,11 @@ async function writeHistoryOperationBlinkit(blinkitData) {
           golocal_export_stock, golocal_export_speed, golocal_export_days_of_cover,
           pop_club_stock, pop_club_speed, pop_club_days_of_cover,
           b2b_speed_7_days, b2b_speed_15_days, b2b_speed_30_days,
+
           warehouse_total_stock, warehouse_total_speed, warehouse_total_days_of_cover,
           marketplace_total_stock, marketplace_total_speed, marketplace_total_days_of_cover,
           quick_comm_total_stock, quick_comm_total_speed, quick_comm_total_days_of_cover,
+
           b2b_stock, b2b_speed, b2b_days_of_cover,
           total_price_at_mrp, total_price_at_selling,
           total_stock, total_speed, total_day_cover, total_cogs,

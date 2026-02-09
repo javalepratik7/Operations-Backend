@@ -1,14 +1,19 @@
 const historyDb = require('../db/historyDb');
 
+/**
+ * Safely convert DB values (DECIMAL / NULL / string) to numbers
+ */
+const n = (v) => Number(v) || 0;
+
 async function writeInventoryPlanningSnapshot(testEan = null) {
   console.log('📊 Inventory Planning snapshot started...');
 
   try {
     /**
      * 1️⃣ Get latest row per EAN from sku_inventory_report
-     *    (IMPORTANT: same EAN has multiple rows historically)
      */
-    const [eanRows] = await historyDb.query(`
+    const [eanRows] = await historyDb.query(
+      `
       SELECT s.*
       FROM history_operations_db.sku_inventory_report s
       INNER JOIN (
@@ -19,7 +24,9 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
         ON s.ean_code = t.ean_code
        AND s.created_at = t.max_created
       ${testEan ? 'WHERE s.ean_code = ?' : ''}
-    `, testEan ? [testEan] : []);
+      `,
+      testEan ? [testEan] : []
+    );
 
     let inserted = 0;
 
@@ -28,18 +35,18 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
 
       /* 2️⃣ DRR (30 days) */
       const drr30 =
-        (Number(row.quickcomm_speed_30_days) || 0) +
-        (Number(row.warehouse_speed_30_days) || 0);
+        n(row.quick_comm_total_speed) +
+        n(row.warehouse_total_speed);
 
       /* 3️⃣ Current stock */
-      const currentStock = Number(row.total_stock) || 0;
+      const currentStock = n(row.total_stock);
 
       /* 4️⃣ Lead time & safety stock */
-      const leadTimeDays = Number(row.lead_time_vendor_lt) || 0;
+      const leadTimeDays = n(row.lead_time_vendor_lt);
       const safetyStockDays = 40;
       const poBufferDays = 15;
 
-      /* 5️⃣ Upcoming stock (MAIN - SUB)*/
+      /* 5️⃣ Upcoming stock (ONLY latest day) */
       const [[upcomingRow]] = await historyDb.query(
         `
         SELECT
@@ -49,65 +56,76 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
                 WHEN external_order_code LIKE '%main%' THEN order_quantity
                 ELSE 0
               END
-            ), 0)
+            ),0)
             -
             COALESCE(SUM(
               CASE
                 WHEN external_order_code LIKE '%sub%' THEN order_quantity
                 ELSE 0
               END
-            ), 0),
+            ),0),
             0
           ) AS upcoming_stock
-        FROM history_operations_db.upcoming_stocks
-        WHERE ean = ?
+        FROM history_operations_db.upcoming_stocks us
+        WHERE us.ean = ?
+          AND DATE(us.created_at) = (
+            SELECT DATE(MAX(created_at))
+            FROM history_operations_db.upcoming_stocks
+            WHERE ean = ?
+          )
         `,
-        [eanCode]
+        [eanCode, eanCode]
       );
 
-      const upcomingStock = Number(upcomingRow?.upcoming_stock) || 0;
+      const upcomingStock = n(upcomingRow?.upcoming_stock);
 
       /* 6️⃣ In-transit stock */
       const inTransitStock =
-        (Number(row.vendor_increff) || 0) +
-        (Number(row.vendor_to_pc) || 0) +
-        (Number(row.vendor_to_fba) || 0) +
-        (Number(row.vendor_to_fbf) || 0) +
-        (Number(row.vendor_to_kv) || 0) +
-        (Number(row.pc_to_fba) || 0) +
-        (Number(row.pc_to_fbf) || 0) +
-        (Number(row.pc_to_increff) || 0) +
-        (Number(row.kv_to_fba) || 0) +
-        (Number(row.kv_to_fbf) || 0);
+        n(row.vendor_increff) +
+        n(row.vendor_to_pc) +
+        n(row.vendor_to_fba) +
+        n(row.vendor_to_fbf) +
+        n(row.vendor_to_kv) +
+        n(row.pc_to_fba) +
+        n(row.pc_to_fbf) +
+        n(row.pc_to_increff) +
+        n(row.kv_to_fba) +
+        n(row.kv_to_fbf);
 
       /* 7️⃣ Reorder level */
-      const reorderLevel = drr30 * (leadTimeDays + safetyStockDays);
+      const reorderLevel =
+        drr30 * (leadTimeDays + safetyStockDays);
 
-      /* 8️⃣ PO Intent Units ✅ NEW */
+      /* 8️⃣ PO Intent Units */
       const poIntentUnits =
         drr30 * (leadTimeDays + poBufferDays);
 
       /* 9️⃣ Days of cover */
       const daysOfCover =
-        drr30 > 0 ? (currentStock + inTransitStock) / drr30 : 0;
+        drr30 > 0
+          ? (currentStock + inTransitStock) / drr30
+          : 0;
 
       const daysOfCoverWithPO =
         drr30 > 0
           ? (currentStock + inTransitStock + upcomingStock) / drr30
           : 0;
 
-      /* 🔟 Inventory status */
+      /* 🔟 Inventory status (FIXED LOGIC) */
+      const availableNow = currentStock + inTransitStock;
+      const availableWithPO = availableNow + upcomingStock;
+
       let inventoryStatus = 'OK';
 
-      if (currentStock + inTransitStock + upcomingStock <= reorderLevel) {
+      if (availableWithPO <= reorderLevel) {
         inventoryStatus = 'PO_REQUIRED';
-      } else if (currentStock + inTransitStock <= reorderLevel) {
+      } else if (availableNow <= reorderLevel) {
         inventoryStatus = 'LOW_STOCK';
-      } else if (currentStock + inTransitStock >= reorderLevel) {
+      } else {
         inventoryStatus = 'OVER_STOCK';
       }
 
-      /* 1️⃣1️⃣ Insert snapshot */
+      /* 1️⃣1️⃣ Insert / Update snapshot */
       await historyDb.query(
         `
         INSERT INTO history_operations_db.inventory_planning_snapshot (

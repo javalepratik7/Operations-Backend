@@ -30,12 +30,24 @@ const { writeInventoryPlanningSnapshot } = require('../services/writeInventoryPl
 
 function startHistorySyncJob() {
   cron.schedule(
-    '0 14 * * *', // every Time run on 2 pm
+    '3 16 * * *', // every Time run on 2 pm
     // '*/15 * * * *' , // every Time run on 15 min
     async () => {
       console.log('🕒 History sync job started at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
 
       try {
+        // ==================== BLINKIT SYNC ====================
+        console.log('\n🛒 Starting Blinkit sync...');
+        const blinkitData = await getBlinkitInventoryDRR();
+        console.log(`📦 Blinkit rows fetched: ${blinkitData.length}`);
+
+        if (blinkitData && blinkitData.length > 0) {
+          await writeHistoryOperationBlinkit(blinkitData);
+          console.log('✅ Blinkit sync completed');
+        } else {
+          console.log('ℹ️ No Blinkit data found, skipping write');
+        }
+
         // ==================== ZEPTO SYNC ====================
         console.log('\n📱 Starting Zepto sync...');
         const zeptoData = await getZeptoInventoryDRR();
@@ -48,17 +60,6 @@ function startHistorySyncJob() {
           console.log('ℹ️ No Zepto data found, skipping write');
         }
 
-        // ==================== BLINKIT SYNC ====================
-        console.log('\n🛒 Starting Blinkit sync...');
-        const blinkitData = await getBlinkitInventoryDRR();
-        console.log(`📦 Blinkit rows fetched: ${blinkitData.length}`);
-
-        if (blinkitData && blinkitData.length > 0) {
-          await writeHistoryOperationBlinkit(blinkitData);
-          console.log('✅ Blinkit sync completed');
-        } else {
-          console.log('ℹ️ No Blinkit data found, skipping write');
-        }
 
         // ==================== SWIGGY SYNC ====================
         console.log('\n🍔 Starting Swiggy sync...');
