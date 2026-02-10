@@ -135,7 +135,14 @@ router.get('/planning', async (req, res) => {
         THEN ips.po_intent_units ELSE 0 END) AS total_po_intent_units,
 
         ROUND(AVG(ips.days_of_cover),2) AS avg_days_cover,
-        SUM(COALESCE(sir.total_cogs,0)) AS inventory_cogs
+        
+        -- ✅ CORRECTED INVENTORY COGS CALCULATION
+        SUM(
+          (COALESCE(ips.current_stock, 0) + 
+           COALESCE(ips.upcoming_stock, 0) + 
+           COALESCE(ips.in_transit_stock, 0)) * 
+          COALESCE(sir.cogs, 0)
+        ) AS inventory_cogs
 
       FROM history_operations_db.inventory_planning_snapshot ips
       JOIN (
@@ -224,15 +231,20 @@ router.get('/planning', async (req, res) => {
 
     let orderByClause;
 
-    if(validSortBy==='inventory_status'){
-      orderByClause=`
+    // ✅ FIX: When kpiFilter is applied, use regular sorting (not special inventory_status logic)
+    if (validSortBy === 'inventory_status' && !kpiFilter) {
+      // Only use special FIELD sorting when NO kpiFilter is active
+      orderByClause = `
         FIELD(ips.inventory_status,'LOW_STOCK','PO_REQUIRED','OVER_STOCK') ${validSortOrder},
         ips.days_of_cover ASC
       `;
-    }else if(['brand','product_title','vendor_name'].includes(validSortBy)){
-      orderByClause=`sir.${validSortBy} ${validSortOrder}`;
-    }else{
-      orderByClause=`ips.${validSortBy} ${validSortOrder}`;
+    } else if (validSortBy === 'inventory_status' && kpiFilter) {
+      // When kpiFilter is active, sort inventory_status alphabetically
+      orderByClause = `ips.inventory_status ${validSortOrder}`;
+    } else if (['brand','product_title','vendor_name'].includes(validSortBy)) {
+      orderByClause = `sir.${validSortBy} ${validSortOrder}`;
+    } else {
+      orderByClause = `ips.${validSortBy} ${validSortOrder}`;
     }
 
     const [[countResult]] = await historyDb.query(`

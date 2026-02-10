@@ -25,6 +25,7 @@ const { getWarehouseQuickCommData } = require('../services/Readoperationswarehou
 const { writeWarehouseQuickCommData } = require('../services/Writeoperationswarehousequickcomm');
 
 const { writeUpcomingStocksSnapshot } = require('../services/writeUpcomingStocks');
+
 const { writeInventoryPlanningSnapshot } = require('../services/writeInventoryPlanningSnapshot');
 
 

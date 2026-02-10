@@ -54,7 +54,7 @@ async function writeHistoryOperationSwiggy(swiggyData) {
              swiggy_stock = ?,
              swiggy_speed = ?
          WHERE ean_code = ?
-           AND created_at >= NOW() - INTERVAL 1 DAY`,
+           AND created_at >= NOW() - INTERVAL 12 HOUR`,
         [
           swiggy_state,
           swiggy_city,
