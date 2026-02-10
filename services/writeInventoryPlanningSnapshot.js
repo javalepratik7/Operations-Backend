@@ -7,7 +7,6 @@ const n = (v) => Number(v) || 0;
 
 async function writeInventoryPlanningSnapshot(testEan = null) {
   console.log('📊 Inventory Planning snapshot started...');
-
   try {
     /**
      * 1️⃣ Get latest row per EAN from sku_inventory_report
@@ -20,9 +19,7 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
         SELECT ean_code, MAX(created_at) AS max_created
         FROM history_operations_db.sku_inventory_report
         GROUP BY ean_code
-      ) t
-        ON s.ean_code = t.ean_code
-       AND s.created_at = t.max_created
+      ) t ON s.ean_code = t.ean_code AND s.created_at = t.max_created
       ${testEan ? 'WHERE s.ean_code = ?' : ''}
       `,
       testEan ? [testEan] : []
@@ -34,9 +31,7 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
       const eanCode = row.ean_code;
 
       /* 2️⃣ DRR (30 days) */
-      const drr30 =
-        n(row.quick_comm_total_speed) +
-        n(row.warehouse_total_speed);
+      const drr30 = n(row.quick_comm_total_speed) + n(row.warehouse_total_speed);
 
       /* 3️⃣ Current stock */
       const currentStock = n(row.total_stock);
@@ -46,26 +41,34 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
       const safetyStockDays = 40;
       const poBufferDays = 15;
 
-      /* 5️⃣ Upcoming stock (ONLY latest day) */
+      /* 5️⃣ Upcoming stock (ONLY latest day) with CORRECTED sub PO logic */
       const [[upcomingRow]] = await historyDb.query(
         `
-        SELECT
-          GREATEST(
-            COALESCE(SUM(
-              CASE
-                WHEN external_order_code LIKE '%main%' THEN order_quantity
-                ELSE 0
-              END
-            ),0)
-            -
-            COALESCE(SUM(
-              CASE
-                WHEN external_order_code LIKE '%sub%' THEN order_quantity
-                ELSE 0
-              END
-            ),0),
-            0
-          ) AS upcoming_stock
+        SELECT GREATEST(
+          -- Main PO: external_order_code LIKE '%main%'
+          COALESCE(SUM(
+            CASE WHEN us.external_order_code LIKE '%main%'
+            THEN us.order_quantity
+            ELSE 0
+            END
+          ), 0)
+          -
+          -- Sub PO: order_type='PO' AND buyer in (Amazon, Flipkart) AND supplier NOT merhaki
+          COALESCE(SUM(
+            CASE WHEN us.order_type = 'PO'
+              AND (
+                us.buyer_wh_vendor LIKE '%Amazon%'
+                OR us.buyer_wh_vendor LIKE '%Flipkart%'
+              )
+              AND us.supplier_name NOT LIKE '%merhaki%'
+              AND us.supplier_name NOT LIKE '%Merhaki%'
+              AND us.supplier_name NOT LIKE '%MERHAKI%'
+            THEN us.order_quantity
+            ELSE 0
+            END
+          ), 0),
+          0
+        ) AS upcoming_stock
         FROM history_operations_db.upcoming_stocks us
         WHERE us.ean = ?
           AND DATE(us.created_at) = (
@@ -93,30 +96,20 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
         n(row.kv_to_fbf);
 
       /* 7️⃣ Reorder level */
-      const reorderLevel =
-        drr30 * (leadTimeDays + safetyStockDays);
+      const reorderLevel = drr30 * (leadTimeDays + safetyStockDays);
 
       /* 8️⃣ PO Intent Units */
-      const poIntentUnits =
-        drr30 * (leadTimeDays + poBufferDays);
+      const poIntentUnits = drr30 * (leadTimeDays + poBufferDays);
 
       /* 9️⃣ Days of cover */
-      const daysOfCover =
-        drr30 > 0
-          ? (currentStock + inTransitStock) / drr30
-          : 0;
-
-      const daysOfCoverWithPO =
-        drr30 > 0
-          ? (currentStock + inTransitStock + upcomingStock) / drr30
-          : 0;
+      const daysOfCover = drr30 > 0 ? (currentStock + inTransitStock) / drr30 : 0;
+      const daysOfCoverWithPO = drr30 > 0 ? (currentStock + inTransitStock + upcomingStock) / drr30 : 0;
 
       /* 🔟 Inventory status (FIXED LOGIC) */
       const availableNow = currentStock + inTransitStock;
       const availableWithPO = availableNow + upcomingStock;
 
       let inventoryStatus = 'OK';
-
       if (availableWithPO <= reorderLevel) {
         inventoryStatus = 'PO_REQUIRED';
       } else if (availableNow <= reorderLevel) {
@@ -179,13 +172,10 @@ async function writeInventoryPlanningSnapshot(testEan = null) {
 
     console.log(`✅ Inventory Planning snapshot completed. Rows processed: ${inserted}`);
     return { inserted };
-
   } catch (error) {
     console.error('❌ Inventory Planning snapshot failed:', error.message);
     throw error;
   }
 }
 
-module.exports = {
-  writeInventoryPlanningSnapshot
-};
+module.exports = { writeInventoryPlanningSnapshot };

@@ -85,7 +85,7 @@ async function writeWarehouseQuickCommData(inventoryData) {
         n(blinkit_marketplace_speed_30_days) +
         n(myntra_drr);
 
-      console.log('warehouse_total_speed', warehouse_total_speed);
+      // console.log('warehouse_total_speed', warehouse_total_speed);
 
       const warehouse_total_stock =
         n(increff_units) +

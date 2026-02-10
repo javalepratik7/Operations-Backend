@@ -104,43 +104,27 @@ router.get('/planning', async (req, res) => {
     `, values);
 
     /* =========================================================
-       4️⃣ DAYS COVER TREND (LAST 7 DAYS, FILTER AWARE)
+       4️⃣ DAYS COVER TREND (LAST 7 DAYS, UNFILTERED - ALWAYS GLOBAL)
     ========================================================= */
-    const trendValues = [...values];
     const [daysCoverTrend] = await historyDb.query(`
       SELECT
         ips.snapshot_date,
         ROUND(AVG(ips.days_of_cover), 2) AS avg_days_cover
       FROM history_operations_db.inventory_planning_snapshot ips
-      JOIN (
-        SELECT sir1.*
-        FROM history_operations_db.sku_inventory_report sir1
-        INNER JOIN (
-          SELECT ean_code, MAX(created_at) AS max_created
-          FROM history_operations_db.sku_inventory_report
-          GROUP BY ean_code
-        ) sir2
-          ON sir1.ean_code = sir2.ean_code
-         AND sir1.created_at = sir2.max_created
-      ) sir ON sir.ean_code = ips.ean_code
       WHERE ips.snapshot_date >= CURDATE() - INTERVAL 6 DAY
-      ${FILTER_SQL}
       GROUP BY ips.snapshot_date
       ORDER BY ips.snapshot_date ASC
-    `, trendValues);
+    `);
 
     /* =========================================================
-       5️⃣ QUICK COMMERCE SPEED (FILTER AWARE)
+       5️⃣ QUICK COMMERCE SPEED (UNFILTERED - ALWAYS GLOBAL)
     ========================================================= */
-    const qcFilters = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-    const qcValues = values.slice(1); // exclude snapshot_date
-
     const [[quickCommerce]] = await historyDb.query(`
       SELECT
-        ROUND(SUM(COALESCE(sir.swiggy_speed, 0)), 2) AS swiggy,
-        ROUND(SUM(COALESCE(sir.zepto_speed, 0)), 2) AS zepto,
-        ROUND(SUM(COALESCE(sir.blinkit_b2b_speed, 0)), 2) AS blinkit_b2b,
-        ROUND(SUM(COALESCE(sir.blinkit_marketplace_speed, 0)), 2) AS blinkit_b2c
+        ROUND(SUM(COALESCE(sir.swiggy_drr_30d, 0)), 2) AS swiggy,
+        ROUND(SUM(COALESCE(sir.Zepto_B2B_drr_30d, 0)), 2) AS zepto,
+        ROUND(SUM(COALESCE(sir.blinkit_b2b_drr_30d, 0)), 2) AS blinkit_b2b,
+        ROUND(SUM(COALESCE(sir.blinkit_marketplace_speed_30_days, 0)), 2) AS blinkit_b2c
       FROM (
         SELECT sir1.*
         FROM history_operations_db.sku_inventory_report sir1
@@ -152,11 +136,10 @@ router.get('/planning', async (req, res) => {
           ON sir1.ean_code = sir2.ean_code
          AND sir1.created_at = sir2.max_created
       ) sir
-      ${qcFilters}
-    `, qcValues);
+    `);
 
     /* =========================================================
-       6️⃣ INVENTORY DISTRIBUTION (FILTER AWARE)
+       6️⃣ INVENTORY DISTRIBUTION (UNFILTERED - ALWAYS GLOBAL)
     ========================================================= */
     const [[distribution]] = await historyDb.query(`
       SELECT
@@ -178,8 +161,7 @@ router.get('/planning', async (req, res) => {
           ON sir1.ean_code = sir2.ean_code
          AND sir1.created_at = sir2.max_created
       ) sir
-      ${qcFilters}
-    `, qcValues);
+    `);
 
     /* =========================================================
        7️⃣ SKU DETAILS (FILTER AWARE + PAGINATION)
@@ -202,7 +184,7 @@ router.get('/planning', async (req, res) => {
       ) sir ON sir.ean_code = ips.ean_code
       WHERE ips.snapshot_date = ?
       ${FILTER_SQL}
-    `, values); // Use the same values array that has snapshot_date + filters
+    `, values);
     
     const totalRecords = countResult?.total || 0;
     
@@ -211,7 +193,7 @@ router.get('/planning', async (req, res) => {
         ips.*,
         sir.brand,
         sir.product_title,
-        sir.vendor_name
+        COALESCE(NULLIF(TRIM(sir.vendor_name), ''), 'No Vendor') AS vendor_name
       FROM history_operations_db.inventory_planning_snapshot ips
       JOIN (
         SELECT sir1.*
@@ -235,31 +217,6 @@ router.get('/planning', async (req, res) => {
     /* =========================================================
        8️⃣ FILTER OPTIONS (DYNAMIC - BASED ON CURRENT FILTERS)
     ========================================================= */
-    
-    // Build filter conditions for filter options queries
-    const filterOptionsConditions = [];
-    const filterOptionsValues = [];
-    
-    if (brand) {
-      filterOptionsConditions.push('sir1.brand = ?');
-      filterOptionsValues.push(brand);
-    }
-    if (vendor) {
-      filterOptionsConditions.push('sir1.vendor_name = ?');
-      filterOptionsValues.push(vendor);
-    }
-    if (category) {
-      filterOptionsConditions.push('sir1.category = ?');
-      filterOptionsValues.push(category);
-    }
-    if (location) {
-      filterOptionsConditions.push('sir1.swiggy_city = ?');
-      filterOptionsValues.push(location);
-    }
-    
-    const filterOptionsWhere = filterOptionsConditions.length 
-      ? `AND ${filterOptionsConditions.join(' AND ')}`
-      : '';
     
     // Brands - filtered by other selected filters (excluding brand itself)
     const brandFilterConditions = [];
@@ -316,7 +273,7 @@ router.get('/planning', async (req, res) => {
       : '';
     
     const [vendors] = await historyDb.query(`
-      SELECT DISTINCT sir1.vendor_name AS vendor
+      SELECT DISTINCT COALESCE(NULLIF(TRIM(sir1.vendor_name), ''), 'No Vendor') AS vendor
       FROM history_operations_db.sku_inventory_report sir1
       INNER JOIN (
         SELECT ean_code, MAX(created_at) AS max_created
@@ -325,10 +282,9 @@ router.get('/planning', async (req, res) => {
       ) sir2
         ON sir1.ean_code = sir2.ean_code
        AND sir1.created_at = sir2.max_created
-      WHERE sir1.vendor_name IS NOT NULL 
-        AND sir1.vendor_name != ''
+      WHERE 1=1
         ${vendorWhere}
-      ORDER BY sir1.vendor_name
+      ORDER BY vendor
     `, vendorFilterValues);
 
     // Categories - filtered by other selected filters (excluding category itself)
