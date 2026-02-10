@@ -12,7 +12,10 @@ router.get('/planning', async (req, res) => {
       brand,
       vendor,
       category,
-      location
+      location,
+      kpiFilter,
+      sortBy = 'inventory_status',
+      sortOrder = 'asc'
     } = req.query;
 
     const offset = (page - 1) * limit;
@@ -52,9 +55,60 @@ router.get('/planning', async (req, res) => {
       values.push(category);
     }
 
-    if (location) {
-      filters.push('sir.swiggy_city = ?');
-      values.push(location);
+    /* ✅ WAREHOUSE LOCATION FILTER */
+    if (location && location.toLowerCase() !== 'all') {
+      switch (location.toLowerCase()) {
+        case 'increff':
+          filters.push('COALESCE(sir.increff_units,0) > 0');
+          break;
+
+        case 'kv_traders':
+          filters.push('COALESCE(sir.kvt_units,0) > 0');
+          break;
+
+        case 'processing_center':
+          filters.push('COALESCE(sir.pc_units,0) > 0');
+          break;
+
+        case 'amazon_fba':
+          filters.push('(COALESCE(sir.fba_units_gb,0) + COALESCE(sir.fba_bundled_units,0)) > 0');
+          break;
+
+        case 'flipkart_fbf':
+          filters.push('(COALESCE(sir.fbf_units_gb,0) + COALESCE(sir.fbf_bundled_units,0)) > 0');
+          break;
+
+        case 'myntra':
+          filters.push('(COALESCE(sir.myntra_units_gb,0) + COALESCE(sir.myntra_bundled_units,0)) > 0');
+          break;
+
+        case 'rk_world':
+          filters.push('COALESCE(sir.rk_world_stock,0) > 0');
+          break;
+      }
+    }
+
+    /* KPI Filters */
+    if (kpiFilter) {
+      switch (kpiFilter) {
+        case 'stock_alert':
+          filters.push('(ips.inventory_status = ? OR ips.current_stock = 0)');
+          values.push('LOW_STOCK');
+          break;
+
+        case 'upcoming_stock':
+          filters.push('ips.upcoming_stock > 0');
+          break;
+
+        case 'po_required':
+          filters.push('ips.inventory_status = ?');
+          values.push('PO_REQUIRED');
+          break;
+
+        case 'over_inventory':
+          filters.push('ips.days_of_cover > 90');
+          break;
+      }
     }
 
     const FILTER_SQL = filters.length
@@ -62,7 +116,7 @@ router.get('/planning', async (req, res) => {
       : '';
 
     /* =========================================================
-       3️⃣ SUMMARY (FILTER AWARE)
+       3️⃣ SUMMARY
     ========================================================= */
     const [[summary]] = await historyDb.query(`
       SELECT
@@ -71,328 +125,225 @@ router.get('/planning', async (req, res) => {
         SUM(ips.upcoming_stock) AS upcoming_stock,
         SUM(ips.current_stock + ips.in_transit_stock + ips.upcoming_stock) AS total_stock,
 
-        SUM(
-          CASE WHEN ips.inventory_status = 'OVER_STOCK'
-          THEN ips.current_stock ELSE 0 END
-        ) AS over_inventory,
+        SUM(CASE WHEN ips.inventory_status='OVER_STOCK'
+        THEN ips.current_stock ELSE 0 END) AS over_inventory,
 
-        SUM(ips.inventory_status = 'LOW_STOCK') AS stock_alert,
-        SUM(ips.inventory_status = 'PO_REQUIRED') AS po_required,
+        SUM(ips.inventory_status='LOW_STOCK') AS stock_alert,
+        SUM(ips.inventory_status='PO_REQUIRED') AS po_required,
 
-        SUM(
-          CASE WHEN ips.inventory_status = 'PO_REQUIRED'
-          THEN ips.po_intent_units ELSE 0 END
-        ) AS total_po_intent_units,
+        SUM(CASE WHEN ips.inventory_status='PO_REQUIRED'
+        THEN ips.po_intent_units ELSE 0 END) AS total_po_intent_units,
 
-        ROUND(AVG(ips.days_of_cover), 2) AS avg_days_cover,
-        
-        SUM(COALESCE(sir.total_cogs, 0)) AS inventory_cogs
+        ROUND(AVG(ips.days_of_cover),2) AS avg_days_cover,
+        SUM(COALESCE(sir.total_cogs,0)) AS inventory_cogs
+
       FROM history_operations_db.inventory_planning_snapshot ips
       JOIN (
         SELECT sir1.*
         FROM history_operations_db.sku_inventory_report sir1
         INNER JOIN (
-          SELECT ean_code, MAX(created_at) AS max_created
+          SELECT ean_code, MAX(created_at) max_created
           FROM history_operations_db.sku_inventory_report
           GROUP BY ean_code
         ) sir2
-          ON sir1.ean_code = sir2.ean_code
-         AND sir1.created_at = sir2.max_created
-      ) sir ON sir.ean_code = ips.ean_code
-      WHERE ips.snapshot_date = ?
+        ON sir1.ean_code=sir2.ean_code
+        AND sir1.created_at=sir2.max_created
+      ) sir ON sir.ean_code=ips.ean_code
+      WHERE ips.snapshot_date=?
       ${FILTER_SQL}
     `, values);
 
     /* =========================================================
-       4️⃣ DAYS COVER TREND (LAST 7 DAYS, UNFILTERED - ALWAYS GLOBAL)
+       4️⃣ DAYS COVER TREND
     ========================================================= */
     const [daysCoverTrend] = await historyDb.query(`
-      SELECT
-        ips.snapshot_date,
-        ROUND(AVG(ips.days_of_cover), 2) AS avg_days_cover
-      FROM history_operations_db.inventory_planning_snapshot ips
-      WHERE ips.snapshot_date >= CURDATE() - INTERVAL 6 DAY
-      GROUP BY ips.snapshot_date
-      ORDER BY ips.snapshot_date ASC
+      SELECT snapshot_date,
+      ROUND(AVG(days_of_cover),2) avg_days_cover
+      FROM history_operations_db.inventory_planning_snapshot
+      WHERE snapshot_date >= CURDATE() - INTERVAL 6 DAY
+      GROUP BY snapshot_date
+      ORDER BY snapshot_date
     `);
 
     /* =========================================================
-       5️⃣ QUICK COMMERCE SPEED (UNFILTERED - ALWAYS GLOBAL)
+       5️⃣ QUICK COMMERCE
     ========================================================= */
     const [[quickCommerce]] = await historyDb.query(`
       SELECT
-        ROUND(SUM(COALESCE(sir.swiggy_drr_30d, 0)), 2) AS swiggy,
-        ROUND(SUM(COALESCE(sir.Zepto_B2B_drr_30d, 0)), 2) AS zepto,
-        ROUND(SUM(COALESCE(sir.blinkit_b2b_drr_30d, 0)), 2) AS blinkit_b2b,
-        ROUND(SUM(COALESCE(sir.blinkit_marketplace_speed_30_days, 0)), 2) AS blinkit_b2c
-      FROM (
-        SELECT sir1.*
-        FROM history_operations_db.sku_inventory_report sir1
-        INNER JOIN (
-          SELECT ean_code, MAX(created_at) AS max_created
-          FROM history_operations_db.sku_inventory_report
-          GROUP BY ean_code
-        ) sir2
-          ON sir1.ean_code = sir2.ean_code
-         AND sir1.created_at = sir2.max_created
-      ) sir
+        ROUND(SUM(COALESCE(swiggy_drr_30d,0)),2) swiggy,
+        ROUND(SUM(COALESCE(Zepto_B2B_drr_30d,0)),2) zepto,
+        ROUND(SUM(COALESCE(blinkit_b2b_drr_30d,0)),2) blinkit_b2b,
+        ROUND(SUM(COALESCE(blinkit_marketplace_speed_30_days,0)),2) blinkit_b2c
+      FROM history_operations_db.sku_inventory_report sir1
+      JOIN (
+        SELECT ean_code,MAX(created_at) mc
+        FROM history_operations_db.sku_inventory_report
+        GROUP BY ean_code
+      ) sir2
+      ON sir1.ean_code=sir2.ean_code
+      AND sir1.created_at=sir2.mc
     `);
 
     /* =========================================================
-       6️⃣ INVENTORY DISTRIBUTION (UNFILTERED - ALWAYS GLOBAL)
+       6️⃣ INVENTORY DISTRIBUTION
     ========================================================= */
     const [[distribution]] = await historyDb.query(`
       SELECT
-        SUM(COALESCE(increff_units, 0)) AS increff,
-        SUM(COALESCE(kvt_units, 0)) AS kv_traders,
-        SUM(COALESCE(pc_units, 0)) AS processing,
-        SUM(COALESCE(fba_units_gb, 0) + COALESCE(fba_bundled_units, 0)) AS fba,
-        SUM(COALESCE(fbf_units_gb, 0) + COALESCE(fbf_bundled_units, 0)) AS fbf,
-        SUM(COALESCE(myntra_units_gb, 0) + COALESCE(myntra_bundled_units, 0)) AS myntra,
-        SUM(COALESCE(rk_world_stock, 0)) AS rk_world
-      FROM (
-        SELECT sir1.*
-        FROM history_operations_db.sku_inventory_report sir1
-        INNER JOIN (
-          SELECT ean_code, MAX(created_at) AS max_created
-          FROM history_operations_db.sku_inventory_report
-          GROUP BY ean_code
-        ) sir2
-          ON sir1.ean_code = sir2.ean_code
-         AND sir1.created_at = sir2.max_created
-      ) sir
+        SUM(COALESCE(increff_units,0)) increff,
+        SUM(COALESCE(kvt_units,0)) kv_traders,
+        SUM(COALESCE(pc_units,0)) processing,
+        SUM(COALESCE(fba_units_gb,0)+COALESCE(fba_bundled_units,0)) fba,
+        SUM(COALESCE(fbf_units_gb,0)+COALESCE(fbf_bundled_units,0)) fbf,
+        SUM(COALESCE(myntra_units_gb,0)+COALESCE(myntra_bundled_units,0)) myntra,
+        SUM(COALESCE(rk_world_stock,0)) rk_world
+      FROM history_operations_db.sku_inventory_report sir1
+      JOIN (
+        SELECT ean_code,MAX(created_at) mc
+        FROM history_operations_db.sku_inventory_report
+        GROUP BY ean_code
+      ) sir2
+      ON sir1.ean_code=sir2.ean_code
+      AND sir1.created_at=sir2.mc
     `);
 
     /* =========================================================
-       7️⃣ SKU DETAILS (FILTER AWARE + PAGINATION)
+       7️⃣ SORTING + SKU DETAILS
     ========================================================= */
-    
-    // Get total count for pagination - use the same values array
+    const allowedSortColumns = [
+      'brand','ean_code','product_title','current_stock',
+      'drr_30d','days_of_cover','days_of_cover_with_po',
+      'in_transit_stock','vendor_name','inventory_status',
+      'po_intent_units','upcoming_stock'
+    ];
+
+    const validSortBy = allowedSortColumns.includes(sortBy)
+      ? sortBy : 'inventory_status';
+
+    const validSortOrder =
+      sortOrder.toLowerCase()==='desc'?'DESC':'ASC';
+
+    let orderByClause;
+
+    if(validSortBy==='inventory_status'){
+      orderByClause=`
+        FIELD(ips.inventory_status,'LOW_STOCK','PO_REQUIRED','OVER_STOCK') ${validSortOrder},
+        ips.days_of_cover ASC
+      `;
+    }else if(['brand','product_title','vendor_name'].includes(validSortBy)){
+      orderByClause=`sir.${validSortBy} ${validSortOrder}`;
+    }else{
+      orderByClause=`ips.${validSortBy} ${validSortOrder}`;
+    }
+
     const [[countResult]] = await historyDb.query(`
-      SELECT COUNT(*) as total
+      SELECT COUNT(*) total
       FROM history_operations_db.inventory_planning_snapshot ips
       JOIN (
         SELECT sir1.*
         FROM history_operations_db.sku_inventory_report sir1
-        INNER JOIN (
-          SELECT ean_code, MAX(created_at) AS max_created
+        JOIN (
+          SELECT ean_code,MAX(created_at) mc
           FROM history_operations_db.sku_inventory_report
           GROUP BY ean_code
         ) sir2
-          ON sir1.ean_code = sir2.ean_code
-         AND sir1.created_at = sir2.max_created
-      ) sir ON sir.ean_code = ips.ean_code
-      WHERE ips.snapshot_date = ?
+        ON sir1.ean_code=sir2.ean_code
+        AND sir1.created_at=sir2.mc
+      ) sir ON sir.ean_code=ips.ean_code
+      WHERE ips.snapshot_date=?
       ${FILTER_SQL}
     `, values);
-    
-    const totalRecords = countResult?.total || 0;
-    
+
+    const totalRecords = countResult.total || 0;
+
     const [sku_inventory_details] = await historyDb.query(`
-      SELECT 
-        ips.*,
-        sir.brand,
-        sir.product_title,
-        COALESCE(NULLIF(TRIM(sir.vendor_name), ''), 'No Vendor') AS vendor_name
+      SELECT ips.*,sir.brand,sir.product_title,
+      COALESCE(NULLIF(TRIM(sir.vendor_name),''),'No Vendor') vendor_name
       FROM history_operations_db.inventory_planning_snapshot ips
       JOIN (
         SELECT sir1.*
         FROM history_operations_db.sku_inventory_report sir1
-        INNER JOIN (
-          SELECT ean_code, MAX(created_at) AS max_created
+        JOIN (
+          SELECT ean_code,MAX(created_at) mc
           FROM history_operations_db.sku_inventory_report
           GROUP BY ean_code
         ) sir2
-          ON sir1.ean_code = sir2.ean_code
-         AND sir1.created_at = sir2.max_created
-      ) sir ON sir.ean_code = ips.ean_code
-      WHERE ips.snapshot_date = ?
+        ON sir1.ean_code=sir2.ean_code
+        AND sir1.created_at=sir2.mc
+      ) sir ON sir.ean_code=ips.ean_code
+      WHERE ips.snapshot_date=?
       ${FILTER_SQL}
-      ORDER BY
-        FIELD(ips.inventory_status, 'LOW_STOCK', 'PO_REQUIRED', 'OVER_STOCK'),
-        ips.days_of_cover ASC
+      ORDER BY ${orderByClause}
       LIMIT ? OFFSET ?
-    `, [...values, Number(limit), Number(offset)]);
+    `,[...values,Number(limit),Number(offset)]);
 
     /* =========================================================
-       8️⃣ FILTER OPTIONS (DYNAMIC - BASED ON CURRENT FILTERS)
+       8️⃣ STATIC WAREHOUSE LOCATIONS
     ========================================================= */
-    
-    // Brands - filtered by other selected filters (excluding brand itself)
-    const brandFilterConditions = [];
-    const brandFilterValues = [];
-    if (vendor) {
-      brandFilterConditions.push('sir1.vendor_name = ?');
-      brandFilterValues.push(vendor);
-    }
-    if (category) {
-      brandFilterConditions.push('sir1.category = ?');
-      brandFilterValues.push(category);
-    }
-    if (location) {
-      brandFilterConditions.push('sir1.swiggy_city = ?');
-      brandFilterValues.push(location);
-    }
-    const brandWhere = brandFilterConditions.length 
-      ? `AND ${brandFilterConditions.join(' AND ')}`
-      : '';
-    
-    const [brands] = await historyDb.query(`
-      SELECT DISTINCT sir1.brand
-      FROM history_operations_db.sku_inventory_report sir1
-      INNER JOIN (
-        SELECT ean_code, MAX(created_at) AS max_created
-        FROM history_operations_db.sku_inventory_report
-        GROUP BY ean_code
-      ) sir2
-        ON sir1.ean_code = sir2.ean_code
-       AND sir1.created_at = sir2.max_created
-      WHERE sir1.brand IS NOT NULL 
-        AND sir1.brand != ''
-        ${brandWhere}
-      ORDER BY sir1.brand
-    `, brandFilterValues);
-
-    // Vendors - filtered by other selected filters (excluding vendor itself)
-    const vendorFilterConditions = [];
-    const vendorFilterValues = [];
-    if (brand) {
-      vendorFilterConditions.push('sir1.brand = ?');
-      vendorFilterValues.push(brand);
-    }
-    if (category) {
-      vendorFilterConditions.push('sir1.category = ?');
-      vendorFilterValues.push(category);
-    }
-    if (location) {
-      vendorFilterConditions.push('sir1.swiggy_city = ?');
-      vendorFilterValues.push(location);
-    }
-    const vendorWhere = vendorFilterConditions.length 
-      ? `AND ${vendorFilterConditions.join(' AND ')}`
-      : '';
-    
-    const [vendors] = await historyDb.query(`
-      SELECT DISTINCT COALESCE(NULLIF(TRIM(sir1.vendor_name), ''), 'No Vendor') AS vendor
-      FROM history_operations_db.sku_inventory_report sir1
-      INNER JOIN (
-        SELECT ean_code, MAX(created_at) AS max_created
-        FROM history_operations_db.sku_inventory_report
-        GROUP BY ean_code
-      ) sir2
-        ON sir1.ean_code = sir2.ean_code
-       AND sir1.created_at = sir2.max_created
-      WHERE 1=1
-        ${vendorWhere}
-      ORDER BY vendor
-    `, vendorFilterValues);
-
-    // Categories - filtered by other selected filters (excluding category itself)
-    const categoryFilterConditions = [];
-    const categoryFilterValues = [];
-    if (brand) {
-      categoryFilterConditions.push('sir1.brand = ?');
-      categoryFilterValues.push(brand);
-    }
-    if (vendor) {
-      categoryFilterConditions.push('sir1.vendor_name = ?');
-      categoryFilterValues.push(vendor);
-    }
-    if (location) {
-      categoryFilterConditions.push('sir1.swiggy_city = ?');
-      categoryFilterValues.push(location);
-    }
-    const categoryWhere = categoryFilterConditions.length 
-      ? `AND ${categoryFilterConditions.join(' AND ')}`
-      : '';
-    
-    const [categories] = await historyDb.query(`
-      SELECT DISTINCT sir1.category
-      FROM history_operations_db.sku_inventory_report sir1
-      INNER JOIN (
-        SELECT ean_code, MAX(created_at) AS max_created
-        FROM history_operations_db.sku_inventory_report
-        GROUP BY ean_code
-      ) sir2
-        ON sir1.ean_code = sir2.ean_code
-       AND sir1.created_at = sir2.max_created
-      WHERE sir1.category IS NOT NULL 
-        AND sir1.category != ''
-        ${categoryWhere}
-      ORDER BY sir1.category
-    `, categoryFilterValues);
-
-    // Locations - filtered by other selected filters (excluding location itself)
-    const locationFilterConditions = [];
-    const locationFilterValues = [];
-    if (brand) {
-      locationFilterConditions.push('sir1.brand = ?');
-      locationFilterValues.push(brand);
-    }
-    if (vendor) {
-      locationFilterConditions.push('sir1.vendor_name = ?');
-      locationFilterValues.push(vendor);
-    }
-    if (category) {
-      locationFilterConditions.push('sir1.category = ?');
-      locationFilterValues.push(category);
-    }
-    const locationWhere = locationFilterConditions.length 
-      ? `AND ${locationFilterConditions.join(' AND ')}`
-      : '';
-    
-    const [locations] = await historyDb.query(`
-      SELECT DISTINCT sir1.swiggy_city AS location
-      FROM history_operations_db.sku_inventory_report sir1
-      INNER JOIN (
-        SELECT ean_code, MAX(created_at) AS max_created
-        FROM history_operations_db.sku_inventory_report
-        GROUP BY ean_code
-      ) sir2
-        ON sir1.ean_code = sir2.ean_code
-       AND sir1.created_at = sir2.max_created
-      WHERE sir1.swiggy_city IS NOT NULL 
-        AND sir1.swiggy_city != ''
-        ${locationWhere}
-      ORDER BY sir1.swiggy_city
-    `, locationFilterValues);
+    const locations=[
+      'increff','kv_traders','processing_center',
+      'amazon_fba','flipkart_fbf','myntra','rk_world'
+    ];
 
     /* =========================================================
-       9️⃣ RESPONSE
+      FETCH FILTER DROPDOWN VALUES
+    ========================================================= */
+
+    const [brands] = await historyDb.query(`
+      SELECT DISTINCT brand 
+      FROM history_operations_db.sku_inventory_report
+      WHERE brand IS NOT NULL AND brand!=''
+      ORDER BY brand
+    `);
+
+    const [vendors] = await historyDb.query(`
+      SELECT DISTINCT vendor_name 
+      FROM history_operations_db.sku_inventory_report
+      WHERE vendor_name IS NOT NULL AND vendor_name!=''
+      ORDER BY vendor_name
+    `);
+
+    const [categories] = await historyDb.query(`
+      SELECT DISTINCT category 
+      FROM history_operations_db.sku_inventory_report
+      WHERE category IS NOT NULL AND category!=''
+      ORDER BY category
+    `);
+
+
+    /* =========================================================
+       RESPONSE
     ========================================================= */
     res.json({
-      snapshot_date: SNAPSHOT_DATE,
-
-      summary: {
+      snapshot_date:SNAPSHOT_DATE,
+      summary:{
         ...summary,
-        quick_commerce_speed: quickCommerce,
-        inventory_distribution: distribution,
-        days_cover_trend: daysCoverTrend
+        quick_commerce_speed:quickCommerce,
+        inventory_distribution:distribution,
+        days_cover_trend:daysCoverTrend
       },
-
+      
       filters: {
         brands: brands.map(b => b.brand),
-        vendors: vendors.map(v => v.vendor),
+        vendors: vendors.map(v => v.vendor_name),
         categories: categories.map(c => c.category),
-        locations: locations.map(l => l.location)
+        locations
       },
-
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total: totalRecords,
-        totalPages: Math.ceil(totalRecords / Number(limit)),
-        returned: sku_inventory_details.length
+      pagination:{
+        page:Number(page),
+        limit:Number(limit),
+        total:totalRecords,
+        totalPages:Math.ceil(totalRecords/limit),
+        returned:sku_inventory_details.length
       },
-
+      sorting:{sortBy:validSortBy,sortOrder:validSortOrder},
       sku_inventory_details
     });
 
-  } catch (error) {
-    console.error('❌ /planning API error:', error);
+  } catch(error){
+    console.error('❌ /planning API error:',error);
     res.status(500).json({
-      message: 'Planning API failed',
-      error: error.message
+      message:'Planning API failed',
+      error:error.message
     });
   }
 });
