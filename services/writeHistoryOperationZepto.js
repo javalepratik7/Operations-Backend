@@ -23,10 +23,10 @@ async function writeHistoryOperationZepto(zeptoData) {
     const Zepto_drr_15d  = drr_14d;
     const Zepto_drr_30d  = drr_30d;
 
-    console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(
-      `   Zepto DRR → 7d=${Zepto_drr_7d}, 15d=${Zepto_drr_15d}, 30d=${Zepto_drr_30d}`
-    );
+    // console.log(`\n📦 Processing EAN: ${ean}`);
+    // console.log(
+    //   `   Zepto DRR → 7d=${Zepto_drr_7d}, 15d=${Zepto_drr_15d}, 30d=${Zepto_drr_30d}`
+    // );
 
     try {
       // 1️⃣ Check if any record exists for this EAN
@@ -38,7 +38,7 @@ async function writeHistoryOperationZepto(zeptoData) {
       );
 
       if (existingRows[0].count === 0) {
-        console.log(`   ⚠️ No base record found for EAN ${ean}, skipping`);
+        // console.log(`   ⚠️ No base record found for EAN ${ean}, skipping`);
         skipCount++;
         continue;
       }
@@ -56,18 +56,18 @@ async function writeHistoryOperationZepto(zeptoData) {
         [Zepto_drr_7d, Zepto_drr_15d, Zepto_drr_30d, ean]
       );
 
-      console.log(`   ✓ Updated rows: ${updateResult.affectedRows}`);
+      // console.log(`   ✓ Updated rows: ${updateResult.affectedRows}`);
 
       if (updateResult.affectedRows > 0) {
         updateCount++;
       } else {
-        console.log(`   ⚠️ Update matched 0 rows (unexpected)`);
+        // console.log(`   ⚠️ Update matched 0 rows (unexpected)`);
         skipCount++;
       }
 
     } catch (error) {
       errorCount++;
-      console.error(`   ❌ Error processing EAN ${ean}:`, error.message);
+      // console.error(`   ❌ Error processing EAN ${ean}:`, error.message);
       continue;
     }
   }

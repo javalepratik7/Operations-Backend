@@ -24,7 +24,7 @@ async function writeHistoryOperationSwiggy(swiggyData) {
     } = row;
 
     if (!ean) {
-      console.log('⚠️ Missing EAN in input row, skipping');
+      // console.log('⚠️ Missing EAN in input row, skipping');
       continue;
     }
 
@@ -38,7 +38,7 @@ async function writeHistoryOperationSwiggy(swiggyData) {
     const swiggy_stock = units_sold; // ✅ units_sold becomes swiggy_stock
     const swiggy_speed = drr_7d; // ✅ using 7-day DRR as speed
 
-    console.log(`\n📦 Processing EAN: ${ean}`);
+    // console.log(`\n📦 Processing EAN: ${ean}`);
 
     try {
       // 1️⃣ UPDATE last 1 day snapshot

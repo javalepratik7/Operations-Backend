@@ -35,12 +35,12 @@ async function writeOperationsInventoryDetails(inventoryData) {
     const myntra_units_gb_value = myntra_units_gb;
     const myntra_bundled_units = bundled_myntra_units_gb;
 
-    console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(`   Increff: units=${increff_units_value}, allocated=${allocated_on_hold_pc_units}`);
-    console.log(`   PC: units=${pc_units_value}`);
-    console.log(`   FBA: units=${fba_units_gb_value}, bundled=${fba_bundled_units}`);
-    console.log(`   FBF: units=${fbf_units_gb_value}, bundled=${fbf_bundled_units}`);
-    console.log(`   Myntra: units=${myntra_units_gb_value}, bundled=${myntra_bundled_units}`);
+    // console.log(`\n📦 Processing EAN: ${ean}`);
+    // console.log(`   Increff: units=${increff_units_value}, allocated=${allocated_on_hold_pc_units}`);
+    // console.log(`   PC: units=${pc_units_value}`);
+    // console.log(`   FBA: units=${fba_units_gb_value}, bundled=${fba_bundled_units}`);
+    // console.log(`   FBF: units=${fbf_units_gb_value}, bundled=${fbf_bundled_units}`);
+    // console.log(`   Myntra: units=${myntra_units_gb_value}, bundled=${myntra_bundled_units}`);
 
     try {
       // 1️⃣ Try UPDATE the last 12 hours
@@ -70,7 +70,7 @@ async function writeOperationsInventoryDetails(inventoryData) {
         ]
       );
 
-      console.log(`   ✓ Update affected rows: ${updateResult.affectedRows}`);
+      // console.log(`   ✓ Update affected rows: ${updateResult.affectedRows}`);
 
       // 2️⃣ If updated → continue to next row
       if (updateResult.affectedRows > 0) {
@@ -84,10 +84,10 @@ async function writeOperationsInventoryDetails(inventoryData) {
         [ean]
       );
 
-      console.log(`   ✓ Existing records for EAN ${ean}: ${existingRows[0].count}`);
+      // console.log(`   ✓ Existing records for EAN ${ean}: ${existingRows[0].count}`);
 
       if (existingRows[0].count === 0) {
-        console.log(`   ⚠️ No base record found for EAN ${ean}, skipping INSERT`);
+        // console.log(`   ⚠️ No base record found for EAN ${ean}, skipping INSERT`);
         skipCount++;
         continue;
       }
@@ -423,7 +423,7 @@ async function writeOperationsInventoryDetails(inventoryData) {
         ]
       );
 
-      console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
+      // console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
       
       if (insertResult.affectedRows > 0) {
         insertCount++;

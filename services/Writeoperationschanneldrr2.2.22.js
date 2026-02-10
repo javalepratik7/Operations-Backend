@@ -27,9 +27,9 @@ async function writeOperationsChannelDRR(channelData) {
     const fbf_drr = flipkart_drr;
     const myntra_drr_value = myntra_drr;
 
-    console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(`   Data: allocated_on_hold=${allocated_on_hold}, increff_day_cover=${increff_day_cover_value}`);
-    console.log(`   DRR: fba=${fba_drr}, fbf=${fbf_drr}, myntra=${myntra_drr_value}`);
+    // console.log(`\n📦 Processing EAN: ${ean}`);
+    // console.log(`   Data: allocated_on_hold=${allocated_on_hold}, increff_day_cover=${increff_day_cover_value}`);
+    // console.log(`   DRR: fba=${fba_drr}, fbf=${fbf_drr}, myntra=${myntra_drr_value}`);
 
     try {
       // 1️⃣ Try UPDATE the last 12 hours
@@ -61,7 +61,7 @@ async function writeOperationsChannelDRR(channelData) {
       console.log(`   ✓ Existing records for EAN ${ean}: ${existingRows[0].count}`);
 
       if (existingRows[0].count === 0) {
-        console.log(`   ⚠️ No base record found for EAN ${ean}, skipping INSERT`);
+        // console.log(`   ⚠️ No base record found for EAN ${ean}, skipping INSERT`);
         skipCount++;
         continue;
       }
@@ -386,7 +386,7 @@ async function writeOperationsChannelDRR(channelData) {
         [allocated_on_hold, increff_day_cover_value, fba_drr, fbf_drr, myntra_drr_value, ean]
       );
 
-      console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
+      // console.log(`   ✓ Insert affected rows: ${insertResult.affectedRows}`);
       
       if (insertResult.affectedRows > 0) {
         insertCount++;

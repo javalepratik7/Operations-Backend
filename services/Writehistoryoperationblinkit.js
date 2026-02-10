@@ -23,11 +23,11 @@ async function writeHistoryOperationBlinkit(blinkitData) {
     const blinkit_b2b_drr_15d = drr_14d;
     const blinkit_b2b_drr_30d = drr_30d;
 
-    console.log(`\n📦 Processing EAN: ${ean}`);
-    console.log(
-      `   Stock=${blinkit_b2b_stock}, DRR(7/15/30)=` +
-      `${blinkit_b2b_drr_7d}/${blinkit_b2b_drr_15d}/${blinkit_b2b_drr_30d}`
-    );
+    // console.log(`\n📦 Processing EAN: ${ean}`);
+    // console.log(
+    //   `   Stock=${blinkit_b2b_stock}, DRR(7/15/30)=` +
+    //   `${blinkit_b2b_drr_7d}/${blinkit_b2b_drr_15d}/${blinkit_b2b_drr_30d}`
+    // );
 
     try {
       // 1️⃣ UPDATE records from last 12 hours

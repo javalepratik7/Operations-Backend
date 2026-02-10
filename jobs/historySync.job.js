@@ -31,13 +31,13 @@ const { writeInventoryPlanningSnapshot } = require('../services/writeInventoryPl
 
 function startHistorySyncJob() {
   cron.schedule(
-    '30 13 * * *', // every Time run on 2 pm
+    '14 20 * * *', // every Time run on 2 pm
     // '*/15 * * * *' , // every Time run on 15 min
     async () => {
       console.log('🕒 History sync job started at:', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }));
 
       try {
-        // ==================== BLINKIT SYNC ====================
+        // ====================   1111111 BLINKIT SYNC ====================
         console.log('\n🛒 Starting Blinkit sync...');
         const blinkitData = await getBlinkitInventoryDRR();
         console.log(`📦 Blinkit rows fetched: ${blinkitData.length}`);
@@ -49,7 +49,7 @@ function startHistorySyncJob() {
           console.log('ℹ️ No Blinkit data found, skipping write');
         }
 
-        // ==================== ZEPTO SYNC ====================
+        // ==================== 2222222 ZEPTO SYNC ====================
         console.log('\n📱 Starting Zepto sync...');
         const zeptoData = await getZeptoInventoryDRR();
         console.log(`📦 Zepto rows fetched: ${zeptoData.length}`);
